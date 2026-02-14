@@ -1,0 +1,27 @@
+# FastAPI 框架
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+
+# 数据处理
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.14.0
+scikit-learn>=1.5.0
+
+# MNE-Python 脑电处理
+mne>=1.8.0
+mne-icalabel>=0.7.0
+h5py>=3.10.0
+pymatreader>=1.0.0
+mat73>=0.60
+
+# 工具
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+python-dotenv>=1.0.0
+cryptography>=44.0.0
+
+# 开发
+pytest>=8.3.0
+httpx>=0.28.0

@@ -1,0 +1,77 @@
+# Git
+.git
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.spec.log
+hooks/__pycache__/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Environment Variables
+.env
+
+# License & Activation
+.license
+.license_keys/
+
+# Debug Logs
+*_debug.log
+*.log
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm/
+
+# IDE Settings
+.idea/
+.vscode/
+.cursor/
+.codex/
+*.swp
+*.swo
+
+# Project Specific
+.mne_project_cache/
+*.edf
+*.set
+*.fdt
+*.bdf
+*.fif
+
+# 本地设计文档（不上传）
+AGENTS.md
+产品需求文档 (PRD).md
+UI 设计方案.md
+Solarized Light Comprehensive Design System
+
+# OS Generated
+.DS_Store
+Thumbs.db

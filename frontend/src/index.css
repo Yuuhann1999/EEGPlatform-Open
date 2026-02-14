@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+@theme {
+  /* Solarized Light Palette */
+  --color-base03: #002b36;
+  --color-base02: #073642;
+  --color-base01: #586e75;
+  --color-base00: #657b83;
+  --color-base0: #839496;
+  --color-base1: #93a1a1;
+  --color-base2: #eee8d5;
+  --color-base3: #fdf6e3;
+  --color-yellow: #b58900;
+  --color-orange: #cb4b16;
+  --color-red: #dc322f;
+  --color-magenta: #d33682;
+  --color-violet: #6c71c4;
+  --color-blue: #268bd2;
+  --color-cyan: #2aa198;
+  --color-green: #859900;
+
+  /* App Semantic Colors (Mapped to Solarized) */
+  --color-eeg-bg: var(--color-base3);        /* Main page background */
+  --color-eeg-surface: var(--color-base2);   /* Sidebar, Cards */
+  --color-eeg-border: var(--color-base0);    /* Borders */
+  --color-eeg-sidebar: var(--color-base2);
+  
+  /* Interactive */
+  /* Using exact colors instead of opacity for better consistency if needed, but opacity works well for hover */
+  --color-eeg-hover: rgba(7, 54, 66, 0.06);
+  --color-eeg-active: var(--color-blue);
+  
+  /* Text */
+  --color-eeg-text: var(--color-base01);     /* Body text */
+  --color-eeg-text-muted: var(--color-base00); /* Secondary text */
+  
+  /* Status */
+  --color-eeg-accent: var(--color-cyan);
+  --color-eeg-success: var(--color-green);
+  --color-eeg-warning: var(--color-yellow);
+  --color-eeg-error: var(--color-red);
+  --color-eeg-processing: var(--color-blue);
+  --color-eeg-shadow: rgba(7, 54, 66, 0.12);
+
+  /* Fonts */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-serif: 'Merriweather', 'Georgia', serif;
+
+  /* Animations */
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-fade-in: fadeIn 0.3s ease-out;
+  --animate-slide-in: slideIn 0.3s ease-out;
+
+  @keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes slideIn {
+    0% { transform: translateX(-10px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+  }
+}
+
+/* Import Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Merriweather:wght@300;400;700&display=swap');
+
+:root {
+  font-family: var(--font-serif);
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Theme: Minimal Light */
+:root[data-theme="minimal-light"] {
+  --color-base03: #0b1020;
+  --color-base02: #111827;
+  --color-base01: #57606a;
+  --color-base00: #24292f;
+  --color-base0: #6e7781;
+  --color-base1: #d0d7de;
+  --color-base2: #f6f8fa;
+  --color-base3: #ffffff;
+  --color-yellow: #d97706;
+  --color-orange: #d97706;
+  --color-red: #dc2626;
+  --color-magenta: #7c3aed;
+  --color-violet: #7c3aed;
+  --color-blue: #0891b2;
+  --color-cyan: #22d3ee;
+  --color-green: #059669;
+
+  --color-eeg-bg: var(--color-base3);
+  --color-eeg-surface: var(--color-base2);
+  --color-eeg-border: var(--color-base1);
+  --color-eeg-sidebar: var(--color-base2);
+
+  --color-eeg-hover: rgba(2, 6, 23, 0.04);
+  --color-eeg-active: var(--color-blue);
+
+  --color-eeg-text: var(--color-base00);
+  --color-eeg-text-muted: var(--color-base01);
+
+  --color-eeg-accent: var(--color-cyan);
+  --color-eeg-success: var(--color-green);
+  --color-eeg-warning: var(--color-yellow);
+  --color-eeg-error: var(--color-red);
+  --color-eeg-processing: var(--color-blue);
+  --color-eeg-shadow: rgba(2, 6, 23, 0.12);
+}
+
+/* Theme: One Dark */
+:root[data-theme="one-dark"] {
+  color-scheme: dark;
+
+  --color-base03: #0b0f14;
+  --color-base02: #151a21;
+  --color-base01: #2f3640;
+  --color-base00: #e6edf3;
+  --color-base0: #9aa4b2;
+  --color-base1: #384152;
+  --color-base2: #11161c;
+  --color-base3: #0f1419;
+  --color-yellow: #e5c07b;
+  --color-orange: #d19a66;
+  --color-red: #e06c75;
+  --color-magenta: #c678dd;
+  --color-violet: #c678dd;
+  --color-blue: #61afef;
+  --color-cyan: #56b6c2;
+  --color-green: #3fb950;
+
+  --color-eeg-bg: var(--color-base3);
+  --color-eeg-surface: var(--color-base2);
+  --color-eeg-border: var(--color-base1);
+  --color-eeg-sidebar: var(--color-base2);
+
+  --color-eeg-hover: rgba(255, 255, 255, 0.06);
+  --color-eeg-active: var(--color-blue);
+
+  --color-eeg-text: var(--color-base00);
+  --color-eeg-text-muted: var(--color-base0);
+
+  --color-eeg-accent: var(--color-cyan);
+  --color-eeg-success: var(--color-green);
+  --color-eeg-warning: var(--color-yellow);
+  --color-eeg-error: var(--color-red);
+  --color-eeg-processing: var(--color-blue);
+  --color-eeg-shadow: rgba(0, 0, 0, 0.45);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-eeg-bg);
+  color: var(--color-eeg-text);
+  font-family: var(--font-serif);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom Scrollbar - Solarized Style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-base2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-base1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-base00);
+}
+
+/* Input Focus */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-blue);
+  border-color: var(--color-blue);
+}
+
+/* Utility Layers */
+@layer components {
+  .btn-primary {
+    @apply bg-eeg-active text-white px-4 py-2 rounded-md font-medium
+           hover:brightness-110 transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed shadow-md;
+  }
+
+  .btn-secondary {
+    @apply bg-eeg-surface text-eeg-text border border-eeg-border px-4 py-2 rounded-md font-medium
+           hover:bg-eeg-hover transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed shadow-sm;
+  }
+
+  .card {
+    @apply bg-eeg-surface border border-eeg-border rounded-lg p-4 shadow-sm;
+  }
+
+  .input-field {
+    @apply bg-eeg-bg border border-eeg-border rounded-md px-3 py-2 text-eeg-text
+           placeholder:text-eeg-text-muted focus:border-eeg-active focus:ring-1 focus:ring-eeg-active;
+  }
+}
