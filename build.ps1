@@ -99,21 +99,6 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 复制密钥文件到打包目录（如果存在）
-$licenseKeysSource = "backend\.license_keys"
-$licenseKeysDest = "dist\.license_keys"
-if (Test-Path $licenseKeysSource) {
-    Write-Host "  复制密钥文件到打包目录..." -ForegroundColor Gray
-    if (-not (Test-Path $licenseKeysDest)) {
-        New-Item -ItemType Directory -Path $licenseKeysDest | Out-Null
-    }
-    Copy-Item -Path "$licenseKeysSource\public_key.pem" -Destination "$licenseKeysDest\public_key.pem" -Force -ErrorAction SilentlyContinue
-    Write-Host "  密钥文件已复制" -ForegroundColor Green
-} else {
-    Write-Host "  警告: 未找到密钥文件，打包后的 exe 将自动生成新密钥" -ForegroundColor Yellow
-    Write-Host "  注意: 使用新密钥生成的激活码将无法在旧版本 exe 上使用" -ForegroundColor Yellow
-}
-
 # 检查输出
 $exePath = "dist/EEGPlatform.exe"
 if (Test-Path $exePath) {
@@ -131,12 +116,11 @@ if (Test-Path $exePath) {
     Write-Host "  使用方法:" -ForegroundColor Yellow
     Write-Host "    1. 将 dist/EEGPlatform.exe 复制到目标电脑" -ForegroundColor Gray
     Write-Host "    2. 双击运行" -ForegroundColor Gray
-    Write-Host "    3. 打开浏览器访问 http://127.0.0.1:8000" -ForegroundColor Gray
+    Write-Host "    3. 打开浏览器访问 http://127.0.0.1:8088" -ForegroundColor Gray
     Write-Host ""
 } else {
     Write-Host "  打包失败：未找到输出文件" -ForegroundColor Red
     exit 1
 }
-
 
 
