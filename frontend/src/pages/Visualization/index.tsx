@@ -11,17 +11,17 @@ import { useEEGStore } from '../../stores/eegStore';
 
 export function VisualizationPage() {
   const DEFAULT_CENTRAL_ROI = ['C3', 'C4', 'Cz'];
-  const { 
-    selectedROI, 
-    setSelectedROI, 
-    displayMode, 
-    setDisplayMode, 
-    chartType, 
+  const {
+    selectedROI,
+    setSelectedROI,
+    displayMode,
+    setDisplayMode,
+    chartType,
     setChartType,
     sessionId,
     currentData
   } = useEEGStore();
-  
+
   // Topomap 参数
   const [topoMode, setTopoMode] = useState<'potential' | 'power'>('potential');
   const [topoStyle, setTopoStyle] = useState<'canvas' | 'mne'>('canvas'); // 新增：地形图风格
@@ -318,20 +318,20 @@ export function VisualizationPage() {
           <div className="h-full bg-eeg-surface rounded-lg border border-eeg-border overflow-auto shadow-sm shadow-[var(--color-eeg-shadow)]">
             <ErrorBoundary>
               {chartType === 'erp' && (
-                <ERPChart 
+                <ERPChart
                   sessionId={sessionId}
-                  channels={selectedROI.length > 0 
-                    ? selectedROI 
+                  channels={selectedROI.length > 0
+                    ? selectedROI
                     : (currentData?.channels?.filter(ch => ch.type === 'EEG' && !ch.isBad).map(ch => ch.name) || [])}
                   displayMode={displayMode}
                   onRegisterExport={registerExport}
                 />
               )}
               {chartType === 'psd' && (
-                <PSDChart 
+                <PSDChart
                   sessionId={sessionId}
-                  channels={selectedROI.length > 0 
-                    ? selectedROI 
+                  channels={selectedROI.length > 0
+                    ? selectedROI
                     : (currentData?.channels?.filter(ch => ch.type === 'EEG' && !ch.isBad).map(ch => ch.name) || [])}
                   displayMode={displayMode}
                   fmin={psdFmin}

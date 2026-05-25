@@ -96,17 +96,17 @@ export function TopoAnimationChart({
   // 生成 GIF 的函数
   const exportGif = useCallback(async () => {
     if (!animation || animation.frames.length === 0) return;
-    
+
     setExportError(null);
     setExporting(true);
     setExportProgress(0);
-    
+
     try {
       // 收集所有帧的图像
       const images: string[] = [];
       // 根据当前播放速度调整帧延迟：速度越快，延迟越短
       const frameDelay = (animation.interval_ms / playbackSpeed) / 10; // gifshot 使用 1/10 秒为单位
-      
+
       if (animation.render_mode === 'image') {
         // MNE 风格：直接使用 base64 图像
         for (let i = 0; i < animation.frames.length; i++) {
@@ -123,7 +123,7 @@ export function TopoAnimationChart({
         tempCanvas.height = 500;
         const ctx = tempCanvas.getContext('2d');
         if (!ctx) throw new Error('无法创建 Canvas 上下文');
-        
+
         for (let i = 0; i < animation.frames.length; i++) {
           const frame = animation.frames[i];
           if (frame.values) {
@@ -140,14 +140,14 @@ export function TopoAnimationChart({
           setExportProgress((i + 1) / animation.frames.length * 50);
         }
       }
-      
+
       if (images.length === 0) {
         throw new Error('没有可导出的帧');
       }
-      
+
       // 使用 gifshot 生成 GIF
       setExportProgress(60);
-      
+
       gifshot.createGIF({
         images,
         gifWidth: 600,
@@ -162,13 +162,13 @@ export function TopoAnimationChart({
       }, (obj: { error: boolean; errorMsg?: string; image?: string }) => {
         setExporting(false);
         setExportProgress(0);
-        
+
         if (obj.error) {
           console.error('GIF 生成失败:', obj.errorMsg);
           setExportError(`GIF 生成失败: ${obj.errorMsg || '未知错误'}`);
           return;
         }
-        
+
         // 下载 GIF
         const a = document.createElement('a');
         a.href = obj.image!;

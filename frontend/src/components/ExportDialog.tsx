@@ -91,11 +91,10 @@ export function ExportDialog({ isOpen, onClose, sessionId, hasEpochs }: ExportDi
                 <button
                   key={f.value}
                   onClick={() => setFormat(f.value as any)}
-                  className={`p-3 rounded border text-left transition-all ${
-                    format === f.value
+                  className={`p-3 rounded border text-left transition-all ${format === f.value
                       ? 'border-eeg-accent bg-eeg-accent/10 text-eeg-accent'
                       : 'border-eeg-border hover:border-eeg-accent/50 text-eeg-text hover:bg-eeg-hover'
-                  }`}
+                    }`}
                 >
                   <div className="font-medium text-sm">{f.label}</div>
                   <div className="text-xs text-eeg-text-muted mt-0.5">{f.desc}</div>
@@ -110,9 +109,8 @@ export function ExportDialog({ isOpen, onClose, sessionId, hasEpochs }: ExportDi
               导出内容
             </label>
             <div className="space-y-2">
-              <label className={`flex items-center gap-2 p-3 rounded border cursor-pointer transition-all ${
-                !exportEpochs ? 'border-eeg-accent bg-eeg-accent/10' : 'border-eeg-border'
-              }`}>
+              <label className={`flex items-center gap-2 p-3 rounded border cursor-pointer transition-all ${!exportEpochs ? 'border-eeg-accent bg-eeg-accent/10' : 'border-eeg-border'
+                }`}>
                 <input
                   type="radio"
                   checked={!exportEpochs}
@@ -124,9 +122,8 @@ export function ExportDialog({ isOpen, onClose, sessionId, hasEpochs }: ExportDi
                   <div className="text-xs text-eeg-text-muted">当前处理阶段的连续数据</div>
                 </div>
               </label>
-              <label className={`flex items-center gap-2 p-3 rounded border cursor-pointer transition-all ${
-                exportEpochs ? 'border-eeg-accent bg-eeg-accent/10' : 'border-eeg-border'
-              } ${!hasEpochs ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <label className={`flex items-center gap-2 p-3 rounded border cursor-pointer transition-all ${exportEpochs ? 'border-eeg-accent bg-eeg-accent/10' : 'border-eeg-border'
+                } ${!hasEpochs ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 <input
                   type="radio"
                   checked={exportEpochs}

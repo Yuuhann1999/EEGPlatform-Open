@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Merriweather:wght@300;400;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -20,20 +21,25 @@
   --color-green: #859900;
 
   /* App Semantic Colors (Mapped to Solarized) */
-  --color-eeg-bg: var(--color-base3);        /* Main page background */
-  --color-eeg-surface: var(--color-base2);   /* Sidebar, Cards */
-  --color-eeg-border: var(--color-base0);    /* Borders */
+  --color-eeg-bg: var(--color-base3);
+  /* Main page background */
+  --color-eeg-surface: var(--color-base2);
+  /* Sidebar, Cards */
+  --color-eeg-border: var(--color-base0);
+  /* Borders */
   --color-eeg-sidebar: var(--color-base2);
-  
+
   /* Interactive */
   /* Using exact colors instead of opacity for better consistency if needed, but opacity works well for hover */
   --color-eeg-hover: rgba(7, 54, 66, 0.06);
   --color-eeg-active: var(--color-blue);
-  
+
   /* Text */
-  --color-eeg-text: var(--color-base01);     /* Body text */
-  --color-eeg-text-muted: var(--color-base00); /* Secondary text */
-  
+  --color-eeg-text: var(--color-base01);
+  /* Body text */
+  --color-eeg-text-muted: var(--color-base00);
+  /* Secondary text */
+
   /* Status */
   --color-eeg-accent: var(--color-cyan);
   --color-eeg-success: var(--color-green);
@@ -53,18 +59,27 @@
   --animate-slide-in: slideIn 0.3s ease-out;
 
   @keyframes fadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
+    0% {
+      opacity: 0;
+    }
+
+    100% {
+      opacity: 1;
+    }
   }
 
   @keyframes slideIn {
-    0% { transform: translateX(-10px); opacity: 0; }
-    100% { transform: translateX(0); opacity: 1; }
+    0% {
+      transform: translateX(-10px);
+      opacity: 0;
+    }
+
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
 }
-
-/* Import Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Merriweather:wght@300;400;700&display=swap');
 
 :root {
   font-family: var(--font-serif);
@@ -200,15 +215,11 @@ textarea:focus {
 /* Utility Layers */
 @layer components {
   .btn-primary {
-    @apply bg-eeg-active text-white px-4 py-2 rounded-md font-medium
-           hover:brightness-110 transition-all duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed shadow-md;
+    @apply bg-eeg-active text-white px-4 py-2 rounded-md font-medium hover:brightness-110 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md;
   }
 
   .btn-secondary {
-    @apply bg-eeg-surface text-eeg-text border border-eeg-border px-4 py-2 rounded-md font-medium
-           hover:bg-eeg-hover transition-all duration-200
-           disabled:opacity-50 disabled:cursor-not-allowed shadow-sm;
+    @apply bg-eeg-surface text-eeg-text border border-eeg-border px-4 py-2 rounded-md font-medium hover:bg-eeg-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm;
   }
 
   .card {
@@ -216,7 +227,6 @@ textarea:focus {
   }
 
   .input-field {
-    @apply bg-eeg-bg border border-eeg-border rounded-md px-3 py-2 text-eeg-text
-           placeholder:text-eeg-text-muted focus:border-eeg-active focus:ring-1 focus:ring-eeg-active;
+    @apply bg-eeg-bg border border-eeg-border rounded-md px-3 py-2 text-eeg-text placeholder:text-eeg-text-muted focus:border-eeg-active focus:ring-1 focus:ring-eeg-active;
   }
 }

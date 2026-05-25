@@ -32,13 +32,13 @@ const DURATION_OPTIONS = [
   { value: 60, label: '60 秒' },
 ];
 
-export function WaveformViewer({ 
-  data, 
+export function WaveformViewer({
+  data,
   preProcessingData,
-  onBadChannelToggle, 
+  onBadChannelToggle,
   showOverlay = false,
   totalDuration = 300,
-  onTimeRangeChange 
+  onTimeRangeChange
 }: WaveformViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,10 +50,10 @@ export function WaveformViewer({
   const [lastMouseX, setLastMouseX] = useState(0);
   const [hoveredChannel, setHoveredChannel] = useState<string | null>(null);
   const [themeTick, setThemeTick] = useState(0);
-  
+
   // 从store获取事件映射
   const { events: storeEvents } = useEEGStore();
-  
+
   // 创建事件ID到label的映射
   const eventLabelMap = useCallback((eventId: number): string => {
     const storeEvent = storeEvents.find(e => e.id === eventId);
@@ -70,7 +70,7 @@ export function WaveformViewer({
   // 检测是否是epoch模式
   const isEpochMode = data?.isEpoch || false;
   const nEpochs = data?.nEpochs || 0;
-  
+
   // 在epoch模式下，currentTime表示epoch索引，displayDuration表示要显示的epoch数量
   const actualTotalDuration = isEpochMode ? nEpochs : (totalDuration || (data ? data.timeRange[1] : 300));
 
@@ -100,11 +100,11 @@ export function WaveformViewer({
 
     const width = container.clientWidth;
     const numChannels = data.channels.length;
-    
+
     // 固定每个通道的高度，计算总高度
     const dynamicChannelHeight = channelHeight;
     const totalHeight = topPadding + numChannels * dynamicChannelHeight + bottomPadding;
-    
+
     // Canvas 高度根据通道数动态调整（按设备像素比提升清晰度）
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(width * dpr);
@@ -145,16 +145,16 @@ export function WaveformViewer({
     // 时间刻度
     const timeRange = data.timeRange;
     const viewDuration = timeRange[1] - timeRange[0];
-    
+
     ctx.font = '10px JetBrains Mono';
     ctx.fillStyle = colors.textMuted || '#586e75';
     ctx.textAlign = 'center';
-    
+
     for (let i = 0; i <= 10; i++) {
       const x = leftPadding + (drawWidth * i) / 10;
       const time = timeRange[0] + (viewDuration * i) / 10;
       ctx.fillText(`${time.toFixed(1)}s`, x, totalHeight - 10);
-      
+
       // 垂直网格线
       ctx.strokeStyle = colors.border || '#93a1a1';
       ctx.globalAlpha = 0.35;
@@ -168,7 +168,7 @@ export function WaveformViewer({
     // 绘制每个通道
     data.channels.forEach((channel, index) => {
       const y = topPadding + index * dynamicChannelHeight + dynamicChannelHeight / 2;
-      
+
       // 通道背景 - Solarized hover
       if (hoveredChannel === channel.name) {
         ctx.fillStyle = colors.surface || '#eee8d5';
@@ -195,10 +195,10 @@ export function WaveformViewer({
       // 绘制波形（支持epoch模式，NaN作为分隔符）
       ctx.strokeStyle = channel.isBad ? (colors.error || '#dc322f') : (colors.active || '#268bd2');
       ctx.lineWidth = 1;
-      
+
       const uVPerPixel = 100 / (dynamicChannelHeight / 2) / scale;
       const samplesPerPixel = Math.max(1, Math.floor(channel.data.length / drawWidth));
-      
+
       let pathStarted = false;
       let lastX = 0;
 
@@ -207,7 +207,7 @@ export function WaveformViewer({
         if (sampleIndex >= channel.data.length) break;
 
         const value = channel.data[sampleIndex];
-        
+
         // 检查是否是epoch分隔符（使用特殊标记值 -1e10）
         const SEPARATOR_VALUE = -1e10;
         if (value === SEPARATOR_VALUE || (isNaN(value) && value !== null && value !== undefined)) {
@@ -216,7 +216,7 @@ export function WaveformViewer({
             ctx.stroke();
             pathStarted = false;
           }
-          
+
           // 绘制epoch分隔线
           const screenX = leftPadding + px;
           ctx.strokeStyle = colors.border || '#93a1a1';
@@ -227,12 +227,12 @@ export function WaveformViewer({
           ctx.lineTo(screenX, y + dynamicChannelHeight / 2);
           ctx.stroke();
           ctx.setLineDash([]);
-          
+
           // 恢复波形颜色
           ctx.strokeStyle = channel.isBad ? (colors.error || '#dc322f') : (colors.active || '#268bd2');
           continue;
         }
-        
+
         // **关键改变：不再裁剪幅值，允许波形超出通道边界**
         const pixelOffset = value / uVPerPixel;
         // 移除 clamp，直接使用原始偏移
@@ -253,10 +253,10 @@ export function WaveformViewer({
             ctx.lineTo(screenX, screenY);
           }
         }
-        
+
         lastX = screenX;
       }
-      
+
       // 绘制最后一段路径
       if (pathStarted) {
         ctx.stroke();
@@ -270,13 +270,13 @@ export function WaveformViewer({
           ctx.globalAlpha = 0.6;
           ctx.lineWidth = 1;
           ctx.beginPath();
-          
+
           const preSamplesPerPixel = Math.max(1, Math.floor(preChannel.data.length / drawWidth));
-          
+
           for (let px = 0; px < drawWidth; px++) {
             const sampleIndex = Math.floor(px * preSamplesPerPixel);
             if (sampleIndex >= preChannel.data.length) break;
-             
+
             const value = preChannel.data[sampleIndex];
             const pixelOffset = value / uVPerPixel;
             // 同样不裁剪
@@ -299,7 +299,7 @@ export function WaveformViewer({
         if (event.time < timeRange[0] || event.time > timeRange[1]) {
           return;
         }
-        
+
         const eventX = leftPadding + ((event.time - timeRange[0]) / viewDuration) * drawWidth;
         if (eventX >= leftPadding && eventX <= width - rightPadding) {
           // 根据事件ID选择颜色
@@ -310,21 +310,21 @@ export function WaveformViewer({
             4: colors.error || '#dc322f',
           };
           const eventColor = eventColors[event.id] || colors.textMuted || '#586e75';
-          
+
           ctx.strokeStyle = eventColor;
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.moveTo(eventX, topPadding);
           ctx.lineTo(eventX, totalHeight - bottomPadding);
           ctx.stroke();
-          
+
           // 绘制事件标签 - 使用store中的映射
           ctx.fillStyle = eventColor;
           ctx.font = '9px Inter';
           ctx.textAlign = 'center';
           const label = eventLabelMap(event.id);
           ctx.fillText(label, eventX, topPadding - 5);
-          
+
           // 在底部也显示事件标记
           ctx.fillRect(eventX - 1, totalHeight - bottomPadding, 2, 5);
         }
@@ -365,7 +365,7 @@ export function WaveformViewer({
     }
     // 不按 Ctrl 时，允许正常滚动（不阻止默认行为）
   };
-  
+
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     setLastMouseX(e.clientX);
@@ -379,7 +379,7 @@ export function WaveformViewer({
     const rect = canvas.getBoundingClientRect();
     const y = e.clientY - rect.top;
     const channelIndex = Math.floor((y - topPadding) / channelHeight);
-    
+
     if (channelIndex >= 0 && channelIndex < data.channels.length) {
       setHoveredChannel(data.channels[channelIndex].name);
     } else {
@@ -487,7 +487,7 @@ export function WaveformViewer({
           </div>
         </div>
 
-        <select 
+        <select
           className="bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-xs text-eeg-text"
           value={displayDuration}
           onChange={(e) => handleDurationChange(parseInt(e.target.value))}
@@ -499,12 +499,12 @@ export function WaveformViewer({
       </div>
 
       {/* 波形区域 - 占据剩余空间，可滚动 */}
-      <div 
+      <div
         ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-eeg-border scrollbar-track-eeg-surface"
         onWheel={handleWheel}
       >
-        <div 
+        <div
           ref={containerRef}
           className="cursor-grab active:cursor-grabbing"
           onMouseDown={handleMouseDown}
@@ -580,16 +580,16 @@ export function WaveformViewer({
             <span className="text-eeg-text">处理前</span>
           </div>
         )}
-        
+
         <div className="w-px h-4 bg-eeg-border" />
-        
+
         {/* 事件图例 - 使用store中的映射 */}
         <span className="text-eeg-text-muted">事件:</span>
         {data.events && data.events.length > 0 ? (
           [...new Set(data.events.map(e => e.id))].map(id => (
             <div key={id} className="flex items-center gap-1">
-              <div 
-                className="w-2 h-2 rounded-full" 
+              <div
+                className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: getEventColorVar(id) }}
               />
               <span className="text-eeg-text">{eventLabelMap(id)}</span>

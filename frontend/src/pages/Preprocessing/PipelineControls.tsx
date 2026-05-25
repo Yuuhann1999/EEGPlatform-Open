@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Checkbox from '@radix-ui/react-checkbox';
-import { 
-  ChevronDown, 
-  Undo2, 
-  Redo2, 
-  Scissors, 
-  Radio, 
-  Filter, 
+import {
+  ChevronDown,
+  Undo2,
+  Redo2,
+  Scissors,
+  Radio,
+  Filter,
   Zap,
   GitBranch,
   Layers,
@@ -29,19 +29,19 @@ interface PipelineControlsProps {
 }
 
 export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = false, onOpenBatchProcessing }: PipelineControlsProps) {
-  const { 
-    pipelineSteps, 
-    currentStepIndex, 
-    undoPipelineStep, 
-    redoPipelineStep, 
+  const {
+    pipelineSteps,
+    currentStepIndex,
+    undoPipelineStep,
+    redoPipelineStep,
     addPipelineStep,
     events,
     updateEventLabel
   } = useEEGStore();
-  
+
   const [cropMin, setCropMin] = useState('0');
   const [cropMax, setCropMax] = useState('');
-  
+
   // 滤波参数
   const [lowcut, setLowcut] = useState('0.1');
   const [highcut, setHighcut] = useState('40');
@@ -112,8 +112,8 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
   };
 
   const toggleEpochEvent = (eventId: number) => {
-    setSelectedEpochEventIds(prev => 
-      prev.includes(eventId) 
+    setSelectedEpochEventIds(prev =>
+      prev.includes(eventId)
         ? prev.filter(id => id !== eventId)
         : [...prev, eventId]
     );
@@ -140,9 +140,9 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
     <div className="h-full flex flex-col bg-eeg-surface border-r border-eeg-border">
       {/* 顶部撤销/重做 */}
       <div className="p-3 border-b border-eeg-border flex gap-2">
-        <Button 
-          variant="secondary" 
-          size="sm" 
+        <Button
+          variant="secondary"
+          size="sm"
           className="flex-1"
           disabled={!canUndo || isProcessing}
           onClick={async () => {
@@ -155,9 +155,9 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           <Undo2 size={14} className="mr-1" />
           撤销
         </Button>
-        <Button 
-          variant="secondary" 
-          size="sm" 
+        <Button
+          variant="secondary"
+          size="sm"
           className="flex-1"
           disabled={!canRedo || isProcessing}
           onClick={async () => {
@@ -194,13 +194,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   placeholder="末尾"
                 />
               </div>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="w-full"
                 disabled={isProcessing}
-                onClick={() => handleApply('crop', { 
-                  tmin: parseFloat(cropMin) || 0, 
-                  tmax: cropMax ? parseFloat(cropMax) : null 
+                onClick={() => handleApply('crop', {
+                  tmin: parseFloat(cropMin) || 0,
+                  tmax: cropMax ? parseFloat(cropMax) : null
                 })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
@@ -228,9 +228,9 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   <option value="biosemi128">BioSemi 128</option>
                 </select>
               </div>
-              <Button 
-                variant="secondary" 
-                size="sm" 
+              <Button
+                variant="secondary"
+                size="sm"
                 className="w-full"
                 disabled={isProcessing}
                 onClick={() => handleApply('montage', { montageName })}
@@ -266,12 +266,12 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 type="number"
                 placeholder="50 (工频干扰)"
               />
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="w-full"
                 disabled={isProcessing}
-                onClick={() => handleApply('filter', { 
-                  lowcut: lowcut ? parseFloat(lowcut) : null, 
+                onClick={() => handleApply('filter', {
+                  lowcut: lowcut ? parseFloat(lowcut) : null,
                   highcut: highcut ? parseFloat(highcut) : null,
                   notch: notch ? parseFloat(notch) : null
                 })}
@@ -300,11 +300,11 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   <option value="1000">1000 Hz</option>
                 </select>
               </div>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="w-full"
                 disabled={isProcessing}
-                onClick={() => handleApply('resample', { 
+                onClick={() => handleApply('resample', {
                   sampleRate: parseInt(targetSampleRate)
                 })}
               >
@@ -352,8 +352,8 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   className="w-full accent-eeg-active"
                 />
               </div>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="w-full"
                 disabled={isProcessing}
                 onClick={() => handleApply('ica', { components: icaComponents, threshold: icaThreshold })}
@@ -380,17 +380,17 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 <option value="custom">自定义电极</option>
               </select>
               {reference === 'custom' && (
-                <Input 
-                  placeholder="例如: TP9, TP10" 
+                <Input
+                  placeholder="例如: TP9, TP10"
                   value={customRef}
                   onChange={(e) => setCustomRef(e.target.value)}
                 />
               )}
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="w-full"
                 disabled={isProcessing}
-                onClick={() => handleApply('rereference', { 
+                onClick={() => handleApply('rereference', {
                   method: reference,
                   customRef: reference === 'custom' ? customRef.split(',').map(s => s.trim()) : undefined
                 })}
@@ -407,8 +407,8 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
               <div className="max-h-48 overflow-y-auto border border-eeg-border rounded-md bg-eeg-bg p-2 space-y-2">
                 {events.map(event => (
                   <div key={event.id} className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0" 
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: event.color || '#58a6ff' }}
                     />
                     <span className="text-xs text-eeg-text-muted w-10 flex-shrink-0">
@@ -431,8 +431,8 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   </div>
                 )}
               </div>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant="secondary"
                 className="w-full"
                 disabled={isProcessing || Object.keys(eventMappings).length === 0}
@@ -452,7 +452,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 </label>
                 <div className="max-h-32 overflow-y-auto border border-eeg-border rounded-md bg-eeg-bg p-2 space-y-1">
                   {events.map(event => (
-                     <div key={event.id} className="flex items-center gap-2">
+                    <div key={event.id} className="flex items-center gap-2">
                       <Checkbox.Root
                         className="flex h-4 w-4 appearance-none items-center justify-center rounded bg-eeg-surface border border-eeg-border data-[state=checked]:bg-eeg-active data-[state=checked]:border-eeg-active outline-none"
                         checked={selectedEpochEventIds.includes(event.id)}
@@ -463,13 +463,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                           <Check size={10} strokeWidth={4} />
                         </Checkbox.Indicator>
                       </Checkbox.Root>
-                      <label 
-                        htmlFor={`event-${event.id}`} 
+                      <label
+                        htmlFor={`event-${event.id}`}
                         className="text-sm text-eeg-text cursor-pointer select-none flex-1 flex items-center gap-2"
                       >
-                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: event.color }} />
-                         {event.label || `Event ${event.id}`} 
-                         <span className="text-eeg-text-muted text-xs">({event.count})</span>
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: event.color }} />
+                        {event.label || `Event ${event.id}`}
+                        <span className="text-eeg-text-muted text-xs">({event.count})</span>
                       </label>
                     </div>
                   ))}
@@ -503,11 +503,11 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 type="number"
                 placeholder="100"
               />
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="w-full"
                 disabled={isProcessing || selectedEpochEventIds.length === 0}
-                onClick={() => handleApply('epoch', { 
+                onClick={() => handleApply('epoch', {
                   eventIds: selectedEpochEventIds,
                   tmin: parseFloat(epochTmin),
                   tmax: parseFloat(epochTmax),
@@ -542,7 +542,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                       <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-eeg-success border-2 border-eeg-surface" />
                     </div>
                   </div>
-                  
+
                   {/* 中间内容区域 */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
@@ -577,15 +577,15 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
   );
 }
 
-function AccordionItem({ 
-  value, 
-  icon, 
-  title, 
-  children 
-}: { 
-  value: string; 
-  icon: React.ReactNode; 
-  title: string; 
+function AccordionItem({
+  value,
+  icon,
+  title,
+  children
+}: {
+  value: string;
+  icon: React.ReactNode;
+  title: string;
   children: React.ReactNode;
 }) {
   return (
@@ -596,9 +596,9 @@ function AccordionItem({
             <span className="text-eeg-accent">{icon}</span>
             {title}
           </div>
-          <ChevronDown 
-            size={16} 
-            className="text-eeg-text-muted transition-transform duration-200 group-data-[state=open]:rotate-180" 
+          <ChevronDown
+            size={16}
+            className="text-eeg-text-muted transition-transform duration-200 group-data-[state=open]:rotate-180"
           />
         </Accordion.Trigger>
       </Accordion.Header>
