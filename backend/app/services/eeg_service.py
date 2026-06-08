@@ -951,18 +951,38 @@ class EEGService:
         })
         
         # 创建 ICA 对象
+        eeg_picks = mne.pick_types(raw.info, eeg=True, exclude='bads')
+        if len(eeg_picks) < 2:
+            raise ValueError("ICA 至少需要 2 个可用 EEG 通道")
+
         if n_components is None:
-            n_components = min(20, len(mne.pick_types(raw.info, eeg=True)) - 1)
+            n_components = min(20, len(eeg_picks) - 1)
+        else:
+            n_components = min(n_components, len(eeg_picks) - 1)
+
+        fit_raw = raw.copy().pick(eeg_picks)
+        if settings.ICA_FIT_MAX_DURATION_SECONDS and fit_raw.times[-1] > settings.ICA_FIT_MAX_DURATION_SECONDS:
+            fit_raw.crop(tmax=settings.ICA_FIT_MAX_DURATION_SECONDS)
+        if settings.ICA_FIT_MAX_SFREQ and fit_raw.info["sfreq"] > settings.ICA_FIT_MAX_SFREQ:
+            fit_raw.resample(settings.ICA_FIT_MAX_SFREQ, npad="auto")
+        print(
+            f"ICA 拟合数据: {len(fit_raw.ch_names)} 通道, "
+            f"{fit_raw.times[-1]:.1f}s, {fit_raw.info['sfreq']}Hz, "
+            f"ICLabel={'启用' if settings.ENABLE_ICLABEL else '禁用'}"
+        )
         
-        ica = ICA(n_components=n_components, random_state=42)
-        ica.fit(raw)
+        ica = ICA(n_components=n_components, random_state=42, max_iter="auto")
+        ica.fit(fit_raw)
         
         # 使用 mne-icalabel 自动识别伪迹
         excluded_ics = []
         try:
+            if not settings.ENABLE_ICLABEL:
+                raise ImportError("ICLabel 已在当前部署环境禁用")
+
             from mne_icalabel import label_components
 
-            labels = label_components(raw, ica, method='iclabel')
+            labels = label_components(fit_raw, ica, method='iclabel')
             
             # 根据阈值和标签类型排除成分
             # mne-icalabel 的标签映射
@@ -1038,8 +1058,8 @@ class EEGService:
                     continue
                             
         except ImportError:
-            # 如果没有 mne-icalabel，使用简单的 EOG 相关方法
-            print("mne-icalabel 未安装，使用 EOG 检测方法")
+            # 如果没有 mne-icalabel 或当前部署禁用了它，使用简单的 EOG 相关方法
+            print("mne-icalabel 不可用，使用 EOG 检测方法")
             try:
                 eog_indices, eog_scores = ica.find_bads_eog(raw, threshold=threshold)
                 excluded_ics = list(eog_indices) if eog_indices is not None else []

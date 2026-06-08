@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     TFR_N_JOBS: int = 1
     MAX_UPLOAD_SIZE_MB: int = 100
     SUPPORTED_UPLOAD_EXTENSIONS: list[str] = [".edf", ".bdf", ".gdf", ".set", ".fif"]
+    ENABLE_ICLABEL: bool = True
+    ICA_FIT_MAX_SFREQ: float = 250.0
+    ICA_FIT_MAX_DURATION_SECONDS: Optional[float] = None
 
 settings = Settings()
 

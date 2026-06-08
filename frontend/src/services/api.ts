@@ -18,13 +18,18 @@ async function request<T>(
     'Content-Type': 'application/json',
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error('请求未完成，后端可能正在重启、内存不足或网络连接中断');
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: '请求失败' }));
@@ -251,10 +256,15 @@ export const workspaceApi = {
       formData.append('companion_files', companionFile);
     });
 
-    const response = await fetch(`${API_BASE_URL}/workspace/upload`, {
-      method: 'POST',
-      body: formData,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/workspace/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+    } catch {
+      throw new Error('上传请求未完成，后端可能正在重启、内存不足或网络连接中断');
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: '请求失败' }));
