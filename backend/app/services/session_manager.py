@@ -5,7 +5,7 @@ from typing import Optional
 from datetime import datetime, timedelta
 import mne
 
-MAX_UNDO_STACK = 10  # 最大撤销步数
+from ..config import settings
 
 class EEGSession:
     """单个 EEG 数据会话"""
@@ -28,6 +28,11 @@ class EEGSession:
     
     def save_state(self, operation: str, params: dict):
         """保存当前状态到撤销栈（在执行操作前调用）"""
+        if settings.MAX_UNDO_STACK <= 0:
+            self._undo_stack.clear()
+            self._redo_stack.clear()
+            return
+
         if self.raw is not None:
             # 复制 raw 对象
             raw_copy = self.raw.copy()
@@ -39,7 +44,7 @@ class EEGSession:
                 "timestamp": datetime.now().isoformat()
             }, epochs_ref))
             # 限制栈大小
-            if len(self._undo_stack) > MAX_UNDO_STACK:
+            if len(self._undo_stack) > settings.MAX_UNDO_STACK:
                 self._undo_stack.pop(0)
             # 清空重做栈
             self._redo_stack.clear()

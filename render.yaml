@@ -19,3 +19,7 @@ services:
         value: "200"
       - key: ICA_FIT_MAX_DURATION_SECONDS
         value: "120"
+      - key: MAX_UNDO_STACK
+        value: "0"
+      - key: LOG_REQUESTS
+        value: "true"

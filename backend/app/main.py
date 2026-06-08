@@ -1,6 +1,7 @@
 """FastAPI 主应用"""
 import sys
 import io
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,6 +11,7 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from fastapi import FastAPI, HTTPException
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -49,6 +51,25 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+@app.middleware("http")
+async def request_log_middleware(request: Request, call_next):
+    """按需记录请求开始和结束，用于定位 Render 上的中途崩溃。"""
+    if not settings.LOG_REQUESTS:
+        return await call_next(request)
+
+    start = time.perf_counter()
+    print(f"[REQ] start {request.method} {request.url.path}", flush=True)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        print(f"[REQ] error {request.method} {request.url.path} {elapsed_ms:.0f}ms {type(e).__name__}: {e}", flush=True)
+        raise
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    print(f"[REQ] done {request.method} {request.url.path} {response.status_code} {elapsed_ms:.0f}ms", flush=True)
+    return response
 
 # 配置 CORS
 app.add_middleware(
