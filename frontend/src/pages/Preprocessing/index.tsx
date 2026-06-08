@@ -62,6 +62,7 @@ export function PreprocessingPage() {
 
   const [apiConnected, setApiConnected] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 自动清除成功消息
@@ -160,12 +161,13 @@ export function PreprocessingPage() {
     setLoading(true);
     setIsUploading(true);
     setApiConnected(true);
+    setUploadProgress(0);
     setError(null);
     setSuccess(null);
     isEpochModeRef.current = false;
 
     try {
-      const result = await workspaceApi.uploadData(file, companionFiles);
+      const result = await workspaceApi.uploadData(file, companionFiles, setUploadProgress);
       const loadedFile = {
         ...uploadedFile,
         id: result.session_id,
@@ -186,6 +188,7 @@ export function PreprocessingPage() {
     } finally {
       setLoading(false);
       setIsUploading(false);
+      setUploadProgress(null);
     }
   }, [
     resetSession,
@@ -636,8 +639,21 @@ export function PreprocessingPage() {
                 disabled={isUploading || _isLoading}
               >
                 <Upload size={14} className="mr-1" />
-                上传 EEG 文件
+                {isUploading && uploadProgress !== null ? `上传中 ${uploadProgress}%` : '上传 EEG 文件'}
               </Button>
+              {isUploading && uploadProgress !== null && (
+                <div className="space-y-1" role="status" aria-live="polite">
+                  <div className="h-1.5 rounded-full bg-eeg-bg border border-eeg-border overflow-hidden">
+                    <div
+                      className="h-full bg-eeg-active transition-[width] duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-eeg-text-muted">
+                    {uploadProgress < 100 ? `正在上传 ${uploadProgress}%` : '上传完成，正在解析 EEG 数据'}
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-eeg-text-muted leading-relaxed">
                 支持 EDF/BDF/GDF/SET/FIF；SET 请选择同名 FDT；最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
               </p>

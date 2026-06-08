@@ -253,7 +253,7 @@ export const workspaceApi = {
   /**
    * 上传并加载数据文件
    */
-  async uploadData(file: File, companionFiles: File[] = []): Promise<{
+  async uploadData(file: File, companionFiles: File[] = [], onProgress?: (percent: number) => void): Promise<{
     info: EEGDataInfo;
     events: EventInfo[];
     session_id: string;
@@ -264,23 +264,51 @@ export const workspaceApi = {
       formData.append('companion_files', companionFile);
     });
 
-    let response: Response;
-    try {
-      response = await fetch(`${API_BASE_URL}/workspace/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-    } catch {
-      throw new Error('上传请求未完成，后端可能正在重启、内存不足或网络连接中断');
-    }
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}/workspace/upload`);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: '请求失败' }));
-      const errorMessage = error.detail || error.message || `HTTP ${response.status}`;
-      throw new ApiError(errorMessage, response.status);
-    }
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress?.(Math.min(percent, 99));
+      };
 
-    return response.json();
+      xhr.upload.onload = () => {
+        onProgress?.(100);
+      };
+
+      xhr.onload = () => {
+        let data: unknown = null;
+        try {
+          data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+        } catch {
+          data = null;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data as {
+            info: EEGDataInfo;
+            events: EventInfo[];
+            session_id: string;
+          });
+          return;
+        }
+
+        const errorData = data as { detail?: string; message?: string } | null;
+        reject(new ApiError(errorData?.detail || errorData?.message || `HTTP ${xhr.status}`, xhr.status));
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('上传请求未完成，后端可能正在重启、内存不足或网络连接中断'));
+      };
+
+      xhr.onabort = () => {
+        reject(new Error('上传请求已取消'));
+      };
+
+      xhr.send(formData);
+    });
   },
 
   /**

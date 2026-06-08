@@ -1,4 +1,5 @@
 """工作区 API - 文件扫描和数据加载"""
+import time
 import traceback
 import uuid
 from pathlib import Path
@@ -13,6 +14,10 @@ from ..services.eeg_service import eeg_service
 from ..services.session_manager import session_manager
 
 router = APIRouter(prefix="/workspace", tags=["工作区"])
+
+
+def elapsed_ms(start_time: float) -> int:
+    return int((time.perf_counter() - start_time) * 1000)
 
 
 async def save_upload(upload_file: UploadFile, upload_path: Path, max_bytes: int, used_bytes: int = 0) -> int:
@@ -36,20 +41,23 @@ async def save_upload(upload_file: UploadFile, upload_path: Path, max_bytes: int
 
 async def load_file_response(file_path: str) -> LoadDataResponse:
     """加载 EEG 文件并返回会话信息"""
+    load_start = time.perf_counter()
     print(f"开始加载文件: {file_path}")
 
+    raw_start = time.perf_counter()
     session_id, _ = eeg_service.load_raw(file_path)
-    print(f"文件加载成功, session_id: {session_id}")
+    print(f"[UPLOAD] MNE 加载完成 {elapsed_ms(raw_start)}ms, session_id: {session_id}")
 
     session = session_manager.get_session(session_id)
 
-    print("正在获取数据信息...")
+    info_start = time.perf_counter()
     info = eeg_service.get_data_info(session)
-    print(f"数据信息: {info.channel_count} 通道, {info.duration:.1f}s")
+    print(f"[UPLOAD] 数据信息完成 {elapsed_ms(info_start)}ms: {info.channel_count} 通道, {info.duration:.1f}s")
 
-    print("正在获取事件信息...")
+    events_start = time.perf_counter()
     events = eeg_service.get_events(session)
-    print(f"事件信息: {len(events)} 种事件类型")
+    print(f"[UPLOAD] 事件信息完成 {elapsed_ms(events_start)}ms: {len(events)} 种事件类型")
+    print(f"[UPLOAD] 加载响应总耗时 {elapsed_ms(load_start)}ms")
 
     return LoadDataResponse(
         info=info,
@@ -74,6 +82,7 @@ async def upload_data(
     companion_files: list[UploadFile] | None = File(default=None),
 ):
     """上传并加载 EEG 数据文件"""
+    request_start = time.perf_counter()
     original_name = Path(file.filename or "").name
     suffix = Path(original_name).suffix.lower()
     if suffix not in settings.SUPPORTED_UPLOAD_EXTENSIONS:
@@ -88,7 +97,12 @@ async def upload_data(
     saved_paths = [upload_path]
 
     try:
+        save_start = time.perf_counter()
         total_size = await save_upload(file, upload_path, max_bytes)
+        print(
+            f"[UPLOAD] 主文件保存完成 {elapsed_ms(save_start)}ms: "
+            f"{original_name} {total_size} bytes"
+        )
 
         if suffix == ".set":
             set_stem = Path(original_name).stem.lower()
@@ -100,8 +114,15 @@ async def upload_data(
 
                 saved_companion_path = upload_path.with_suffix(".fdt")
                 saved_paths.append(saved_companion_path)
-                total_size += await save_upload(companion_file, saved_companion_path, max_bytes, total_size)
+                companion_start = time.perf_counter()
+                companion_size = await save_upload(companion_file, saved_companion_path, max_bytes, total_size)
+                total_size += companion_size
+                print(
+                    f"[UPLOAD] FDT 伴随文件保存完成 {elapsed_ms(companion_start)}ms: "
+                    f"{companion_name} {companion_size} bytes"
+                )
                 break
+        print(f"[UPLOAD] 文件接收保存总耗时 {elapsed_ms(save_start)}ms: total={total_size} bytes")
     except HTTPException:
         for saved_path in saved_paths:
             saved_path.unlink(missing_ok=True)
@@ -112,7 +133,9 @@ async def upload_data(
             await companion_file.close()
 
     try:
-        return await load_file_response(str(upload_path))
+        response = await load_file_response(str(upload_path))
+        print(f"[UPLOAD] 请求总耗时 {elapsed_ms(request_start)}ms")
+        return response
     except HTTPException:
         for saved_path in saved_paths:
             saved_path.unlink(missing_ok=True)
