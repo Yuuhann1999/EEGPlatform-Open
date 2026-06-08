@@ -11,8 +11,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', icon: <FolderOpen size={22} />, label: '预处理' },
   { to: '/visualization', icon: <LineChart size={22} />, label: '可视化' },
-  // 批处理功能尚未完成，暂时隐藏
-  // { to: '/batch', icon: <Layers size={22} />, label: '批处理' },
   // 导出功能尚未完成，暂时隐藏
   // { to: '/export', icon: <Download size={22} />, label: '导出' },
 ];

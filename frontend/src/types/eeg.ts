@@ -106,25 +106,3 @@ export type MetricType =
   | 'spectral_power'
   | 'spectral_entropy'
   | 'frequency_ratio';
-
-export interface BatchJob {
-  id: string;
-  status: 'pending' | 'running' | 'completed' | 'error';
-  progress: number;
-  totalFiles: number;
-  completedFiles: number;
-  errors: BatchError[];
-  logs: BatchLog[];
-}
-
-export interface BatchError {
-  file: string;
-  message: string;
-  timestamp: string;
-}
-
-export interface BatchLog {
-  message: string;
-  level: 'info' | 'warning' | 'error' | 'success';
-  timestamp: string;
-}
