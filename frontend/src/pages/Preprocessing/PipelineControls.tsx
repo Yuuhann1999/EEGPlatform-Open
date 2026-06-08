@@ -18,11 +18,12 @@ import {
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui';
 import { useEEGStore } from '../../stores/eegStore';
+import type { PipelineStepType } from '../../types/eeg';
 
 interface PipelineControlsProps {
   onAction?: (action: string, params: Record<string, unknown>) => Promise<boolean>;
-  onUndo?: () => Promise<void>;
-  onRedo?: () => Promise<void>;
+  onUndo?: () => Promise<boolean>;
+  onRedo?: () => Promise<boolean>;
   isProcessing?: boolean;
 }
 
@@ -75,7 +76,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
     if (events.length > 0 && selectedEpochEventIds.length === 0) {
       setSelectedEpochEventIds(events.map(e => e.id));
     }
-  }, [events]);
+  }, [events, selectedEpochEventIds.length]);
 
   // Montage 参数
   const [montageName, setMontageName] = useState('standard_1020');
@@ -83,7 +84,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
   const canUndo = currentStepIndex >= 0;
   const canRedo = currentStepIndex < pipelineSteps.length - 1;
 
-  const handleApply = async (type: string, params: Record<string, unknown>) => {
+  const handleApply = async (type: PipelineStepType, params: Record<string, unknown>) => {
     // 调用后端 API
     if (onAction) {
       const success = await onAction(type, params);
@@ -91,7 +92,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
         // 成功后记录到 pipeline
         addPipelineStep({
           id: `${type}-${Date.now()}`,
-          type: type as any,
+          type,
           params,
           timestamp: new Date().toISOString(),
           status: 'applied',
@@ -101,7 +102,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
       // 如果没有 onAction，仅添加到本地 store（演示模式）
       addPipelineStep({
         id: `${type}-${Date.now()}`,
-        type: type as any,
+        type,
         params,
         timestamp: new Date().toISOString(),
         status: 'applied',
@@ -144,10 +145,10 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           className="flex-1"
           disabled={!canUndo || isProcessing}
           onClick={async () => {
-            if (onUndo) {
-              await onUndo();
+            const didUndo = onUndo ? await onUndo() : true;
+            if (didUndo) {
+              undoPipelineStep();
             }
-            undoPipelineStep();
           }}
         >
           <Undo2 size={14} className="mr-1" />
@@ -159,10 +160,10 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           className="flex-1"
           disabled={!canRedo || isProcessing}
           onClick={async () => {
-            if (onRedo) {
-              await onRedo();
+            const didRedo = onRedo ? await onRedo() : true;
+            if (didRedo) {
+              redoPipelineStep();
             }
-            redoPipelineStep();
           }}
         >
           重做
@@ -202,7 +203,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
-                应用
+                裁剪数据
               </Button>
             </div>
           </AccordionItem>
@@ -239,7 +240,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 滤波 (独立) */}
-          <AccordionItem value="filter" icon={<Filter size={16} />} title="滤波 (Filter)">
+          <AccordionItem value="filter" icon={<Filter size={16} />} title="滤波">
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <Input
@@ -281,7 +282,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 重采样 (独立) */}
-          <AccordionItem value="resample" icon={<Activity size={16} />} title="重采样 (Resample)">
+          <AccordionItem value="resample" icon={<Activity size={16} />} title="重采样">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-1.5">
@@ -320,10 +321,10 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   去除伪迹类别
                 </label>
                 {[
-                  { key: 'eyeBlink', label: 'Eye Blink (眼电)' },
-                  { key: 'muscle', label: 'Muscle (肌电)' },
-                  { key: 'heart', label: 'Heart (心电)' },
-                  { key: 'channelNoise', label: 'Channel Noise' },
+                  { key: 'eyeBlink', label: '眼电眨眼' },
+                  { key: 'muscle', label: '肌电伪迹' },
+                  { key: 'heart', label: '心电伪迹' },
+                  { key: 'channelNoise', label: '通道噪声' },
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -357,10 +358,10 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 onClick={() => handleApply('ica', { components: icaComponents, threshold: icaThreshold })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Zap size={14} className="mr-1" />}
-                运行自动 ICA
+                运行 ICA
               </Button>
               <p className="text-xs text-eeg-text-muted">
-                需要安装 mne-icalabel 库以获得最佳效果
+                公网环境使用轻量 ICA；完整 ICLabel 建议在本地或更高内存后端运行。
               </p>
             </div>
           </AccordionItem>
@@ -394,7 +395,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
-                应用
+                应用重参考
               </Button>
             </div>
           </AccordionItem>
@@ -436,13 +437,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 disabled={isProcessing || Object.keys(eventMappings).length === 0}
                 onClick={applyEventMappings}
               >
-                保存
+                保存事件标签
               </Button>
             </div>
           </AccordionItem>
 
           {/* 分段 (多选事件) */}
-          <AccordionItem value="epoch" icon={<Layers size={16} />} title="分段 (Epoching)">
+          <AccordionItem value="epoch" icon={<Layers size={16} />} title="分段">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-2">

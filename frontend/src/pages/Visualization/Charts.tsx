@@ -783,9 +783,6 @@ export function TopoChart({
             sessionId, undefined, freqBand, undefined,  // 功率地形图：不使用timePoint和timeWindow
             interpolation, contours, sensors, effectiveRenderMode
           );
-        console.log('[DEBUG] 功率地形图请求参数:', {
-          mode, freqBand, fmin: freqBand?.[0], fmax: freqBand?.[1], renderStyle, effectiveRenderMode
-        });
         setTopoData(data);
       } catch (err: any) {
         console.error('获取地形图数据失败:', err);
@@ -1473,7 +1470,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
           {/* baseline mode */}
           <div>
             <label className="block text-xs text-eeg-text-muted mb-1">baseline mode</label>
-            <select value={baselineMode} onChange={(e) => setBaselineMode(e.target.value as any)} className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text">
+            <select value={baselineMode} onChange={(e) => setBaselineMode(e.target.value as typeof baselineMode)} className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text">
               <option value="logratio">logratio</option>
               <option value="ratio">ratio</option>
               <option value="zscore">zscore</option>

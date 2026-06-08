@@ -8,6 +8,16 @@ export const API_BASE_URL = (configuredApiBaseUrl || '/api').replace(/\/$/, '');
 
 // ============ 通用请求方法 ============
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -34,9 +44,7 @@ async function request<T>(
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: '请求失败' }));
     const errorMessage = error.detail || error.message || `HTTP ${response.status}`;
-    const errorWithStatus = new Error(errorMessage);
-    (errorWithStatus as any).status = response.status;
-    throw errorWithStatus;
+    throw new ApiError(errorMessage, response.status);
   }
 
   return response.json();
@@ -269,9 +277,7 @@ export const workspaceApi = {
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: '请求失败' }));
       const errorMessage = error.detail || error.message || `HTTP ${response.status}`;
-      const errorWithStatus = new Error(errorMessage);
-      (errorWithStatus as any).status = response.status;
-      throw errorWithStatus;
+      throw new ApiError(errorMessage, response.status);
     }
 
     return response.json();

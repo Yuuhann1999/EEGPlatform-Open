@@ -8,7 +8,7 @@ import { WaveformViewer } from './WaveformViewer';
 import { SidePanel } from './SidePanel';
 import { ThemeToggleButton } from '../../components/ThemeToggleButton';
 import { useEEGStore } from '../../stores/eegStore';
-import { waveformApi, preprocessingApi, workspaceApi } from '../../services/api';
+import { ApiError, waveformApi, preprocessingApi, workspaceApi } from '../../services/api';
 import { generateMockWaveform } from '../../mock/eegData';
 import type { WaveformData, EEGFile } from '../../types/eeg';
 import { formatDuration } from '../../utils/format';
@@ -37,6 +37,19 @@ function getFileSuffix(fileName: string) {
 
 function getFileStem(fileName: string) {
   return fileName.replace(/\.[^/.]+$/, '').toLowerCase();
+}
+
+function getErrorMessage(err: unknown) {
+  return err instanceof Error ? err.message : '未知错误';
+}
+
+function isSessionExpiredError(err: unknown) {
+  const message = getErrorMessage(err);
+  return (err instanceof ApiError && err.status === 404) ||
+    message.includes('会话不存在') ||
+    message.includes('404') ||
+    message.includes('Session') ||
+    message.includes('不存在');
 }
 
 export function PreprocessingPage() {
@@ -165,11 +178,11 @@ export function PreprocessingPage() {
       setEvents(convertApiEvents(result.events));
       setViewTimeRange([0, 10]);
       setSuccess(`已加载 ${file.name}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn('上传或加载数据失败:', err);
       setApiConnected(false);
       setFiles([{ ...uploadedFile, status: 'unprocessed' }]);
-      setError(`上传失败: ${err.message || '未知错误'}`);
+      setError(`上传失败: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
       setIsUploading(false);
@@ -222,20 +235,16 @@ export function PreprocessingPage() {
       
       isEpochModeRef.current = convertedData.isEpoch || false;
       setWaveformData(convertedData);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('获取波形数据失败:', err);
       
-      const isSessionError = (err as any)?.status === 404 || 
-                            (err.message && (err.message.includes('会话不存在') || err.message.includes('404') || err.message.includes('Session') || err.message.includes('不存在')));
-      
-      if (isSessionError) {
+      if (isSessionExpiredError(err)) {
         setError('会话已失效（可能因为后端重启），请返回工作区重新加载数据文件');
         setSessionId(null);
         setWaveformData(null);
       } else {
-        setError(`加载波形失败: ${err.message}`);
-        const data = generateMockWaveform(startTime, startTime + duration, 250);
-        setWaveformData(data);
+        setError(`加载波形失败: ${getErrorMessage(err)}`);
+        setWaveformData(null);
       }
     } finally {
       setIsLoadingWaveform(false);
@@ -295,10 +304,10 @@ export function PreprocessingPage() {
           lowpassFilter: result.info.lowpass_filter,
           badChannels: result.info.bad_channels,
           hasMontage: result.info.has_montage,
-          hasEpochs: (result.info as any).has_epochs ?? false,
-          epochEventIds: (result.info as any).epoch_event_ids ?? [],
-          epochTmin: (result.info as any).epoch_tmin ?? null,
-          epochTmax: (result.info as any).epoch_tmax ?? null,
+          hasEpochs: result.info.has_epochs ?? false,
+          epochEventIds: result.info.epoch_event_ids ?? [],
+          epochTmin: result.info.epoch_tmin ?? null,
+          epochTmax: result.info.epoch_tmax ?? null,
           channels: result.info.channels.map(ch => ({
             name: ch.name,
             type: ch.type,
@@ -307,12 +316,9 @@ export function PreprocessingPage() {
           })),
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('刷新数据信息失败:', err);
-      const isSessionError = (err as any)?.status === 404 || 
-                            (err.message && (err.message.includes('会话不存在') || err.message.includes('404') || err.message.includes('Session') || err.message.includes('不存在')));
-      
-      if (isSessionError) {
+      if (isSessionExpiredError(err)) {
         setError('会话已失效，请返回工作区重新加载数据文件');
         setSessionId(null);
       }
@@ -425,18 +431,16 @@ export function PreprocessingPage() {
           
           if (nEpochs === 0) {
             const suggestion = result.data?.suggestion || '建议降低reject阈值或检查数据质量';
-            setError(`⚠ ${result.message || '所有epochs都被剔除'}。${suggestion}`);
+            setError(`${result.message || '所有 epochs 都被剔除'}。${suggestion}`);
           } else {
             isEpochModeRef.current = true;
             setViewTimeRange([0, 10]);
             try {
               await fetchWaveform(0, 10, true);
-            } catch (waveformErr: any) {
+            } catch (waveformErr: unknown) {
               console.warn('刷新波形失败（不影响主操作）:', waveformErr);
-              const isSessionError = (waveformErr as any)?.status === 404 || 
-                                    (waveformErr.message && (waveformErr.message.includes('会话不存在') || waveformErr.message.includes('404') || waveformErr.message.includes('Session') || waveformErr.message.includes('不存在')));
-              if (isSessionError) {
-                setError('⚠ 操作成功，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
+              if (isSessionExpiredError(waveformErr)) {
+                setError('操作已完成，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
                 setSessionId(null);
               }
             }
@@ -446,12 +450,10 @@ export function PreprocessingPage() {
             // 如果已经处于 epoch 模式（分段后），后续操作（如重参考）也应刷新 epoch 波形
             const forceEpochMode = isEpochModeRef.current;
             await fetchWaveform(viewTimeRange[0], viewTimeRange[1] - viewTimeRange[0], forceEpochMode);
-          } catch (waveformErr: any) {
+          } catch (waveformErr: unknown) {
             console.warn('刷新波形失败（不影响主操作）:', waveformErr);
-            const isSessionError = (waveformErr as any)?.status === 404 || 
-                                  (waveformErr.message && (waveformErr.message.includes('会话不存在') || waveformErr.message.includes('404') || waveformErr.message.includes('Session') || waveformErr.message.includes('不存在')));
-            if (isSessionError) {
-              setError('⚠ 操作成功，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
+            if (isSessionExpiredError(waveformErr)) {
+              setError('操作已完成，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
               setSessionId(null);
             }
           }
@@ -460,12 +462,10 @@ export function PreprocessingPage() {
         if (['crop', 'resample', 'filter', 'ica', 'rereference', 'epoch', 'montage'].includes(action)) {
           try {
             await refreshDataInfo();
-          } catch (refreshErr: any) {
+          } catch (refreshErr: unknown) {
             console.warn('刷新数据信息失败（不影响主操作）:', refreshErr);
-            const isSessionError = (refreshErr as any)?.status === 404 || 
-                                  (refreshErr.message && (refreshErr.message.includes('会话不存在') || refreshErr.message.includes('404') || refreshErr.message.includes('Session') || refreshErr.message.includes('不存在')));
-            if (isSessionError) {
-              setError('⚠ 操作成功，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
+            if (isSessionExpiredError(refreshErr)) {
+              setError('操作已完成，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
               setSessionId(null);
             }
           }
@@ -476,26 +476,23 @@ export function PreprocessingPage() {
         setError(result.message || '操作失败');
         return false;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`预处理操作 ${action} 失败:`, err);
+      const errorMessage = getErrorMessage(err);
       
-      const isSessionError = err?.status === 404 || 
-                            (err.message && (err.message.includes('会话不存在') || err.message.includes('404') || err.message.includes('Session') || err.message.includes('不存在')));
-      
-      const isEpochError = err.message && (
-        err.message.includes('所有epochs都被剔除') || 
-        err.message.includes('epochs都被剔除') ||
-        err.message.includes('超出范围')
+      const isEpochError = (
+        errorMessage.includes('所有epochs都被剔除') ||
+        errorMessage.includes('epochs都被剔除') ||
+        errorMessage.includes('超出范围')
       );
       
-      if (isSessionError) {
+      if (isSessionExpiredError(err)) {
         setError('会话已失效，请重新加载数据文件');
         setSessionId(null);
       } else if (isEpochError && action === 'epoch') {
-        const errorMsg = err.message || '所有epochs都被剔除';
-        setError(`⚠ ${errorMsg}。建议：降低坏段阈值（例如提高到 50-100 µV）或检查数据质量。`);
+        setError(`${errorMessage}。建议：降低坏段阈值（例如提高到 50-100 µV）或检查数据质量。`);
       } else {
-        setError(`操作失败: ${err.message || '未知错误'}`);
+        setError(`操作失败: ${errorMessage}`);
       }
       return false;
     } finally {
@@ -503,8 +500,8 @@ export function PreprocessingPage() {
     }
   }, [sessionId, fetchWaveform, viewTimeRange, setSessionId]);
 
-  const handleUndo = useCallback(async () => {
-    if (!sessionId) return;
+  const handleUndo = useCallback(async (): Promise<boolean> => {
+    if (!sessionId) return false;
     
     setIsProcessing(true);
     setError(null);
@@ -517,19 +514,22 @@ export function PreprocessingPage() {
         isEpochModeRef.current = false;
         setViewTimeRange([0, 10]);
         await fetchWaveform(0, 10, false);
+        return true;
       } else {
         setError(result.message || '撤销失败');
+        return false;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('撤销失败:', err);
-      setError(`撤销失败: ${err.message}`);
+      setError(`撤销失败: ${getErrorMessage(err)}`);
+      return false;
     } finally {
       setIsProcessing(false);
     }
   }, [sessionId, fetchWaveform, refreshDataInfo, clearPreProcessingWaveform]);
 
-  const handleRedo = useCallback(async () => {
-    if (!sessionId) return;
+  const handleRedo = useCallback(async (): Promise<boolean> => {
+    if (!sessionId) return false;
     
     setIsProcessing(true);
     setError(null);
@@ -539,12 +539,15 @@ export function PreprocessingPage() {
       if (result.success) {
         await fetchWaveform(0, viewTimeRange[1] - viewTimeRange[0]);
         await refreshDataInfo();
+        return true;
       } else {
         setError(result.message || '重做失败');
+        return false;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('重做失败:', err);
-      setError(`重做失败: ${err.message}`);
+      setError(`重做失败: ${getErrorMessage(err)}`);
+      return false;
     } finally {
       setIsProcessing(false);
     }
@@ -636,7 +639,7 @@ export function PreprocessingPage() {
                 上传 EEG 文件
               </Button>
               <p className="text-xs text-eeg-text-muted leading-relaxed">
-                支持 EDF/BDF/GDF/SET/FIF，SET 可同选 FDT，最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
+                支持 EDF/BDF/GDF/SET/FIF；SET 请选择同名 FDT；最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
               </p>
             </div>
             
@@ -725,14 +728,14 @@ export function PreprocessingPage() {
           {/* 错误提示 */}
           {error && (
             <div className="mx-4 mt-2">
-              <Alert variant="error" title="错误" description={error} />
+              <Alert variant="error" title="操作未完成" description={error} />
             </div>
           )}
 
           {/* 成功提示 */}
           {success && (
             <div className="mx-4 mt-2">
-              <Alert variant="success" title="成功" description={success} />
+              <Alert variant="success" title="数据已加载" description={success} />
             </div>
           )}
 

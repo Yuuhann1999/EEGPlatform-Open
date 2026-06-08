@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes } from 'react';
 import { cn } from '../../utils/cn';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -9,11 +9,15 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, leftIcon, rightIcon, ...props }, ref) => {
+  ({ className, label, error, leftIcon, rightIcon, id, ...props }, ref) => {
+    const generatedId = useId();
+    const inputId = id ?? generatedId;
+    const errorId = error ? `${inputId}-error` : undefined;
+
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-eeg-text mb-1.5">
+          <label htmlFor={inputId} className="block text-sm font-medium text-eeg-text mb-1.5">
             {label}
           </label>
         )}
@@ -24,7 +28,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             </div>
           )}
           <input
+            id={inputId}
             ref={ref}
+            aria-invalid={Boolean(error)}
+            aria-describedby={errorId}
             className={cn(
               'w-full bg-eeg-bg border border-eeg-border rounded-md px-3 py-2 text-eeg-text',
               'placeholder:text-eeg-text-muted',
@@ -44,7 +51,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         {error && (
-          <p className="mt-1 text-sm text-eeg-error">{error}</p>
+          <p id={errorId} className="mt-1 text-sm text-eeg-error">{error}</p>
         )}
       </div>
     );

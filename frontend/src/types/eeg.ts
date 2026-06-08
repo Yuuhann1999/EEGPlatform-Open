@@ -80,6 +80,8 @@ export type PipelineStepType =
   | 'rereference'
   | 'ica'
   | 'epoch'
+  | 'montage'
+  | 'event_mapping'
   | 'bad_channel'
   | 'drop_channel';
 

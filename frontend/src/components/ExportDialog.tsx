@@ -3,6 +3,14 @@ import { Download, X } from 'lucide-react';
 import { Alert, Button } from './ui';
 import { exportApi } from '../services/api';
 
+type ExportFormat = 'fif' | 'set' | 'edf';
+
+const EXPORT_FORMATS: { value: ExportFormat; label: string; desc: string }[] = [
+  { value: 'fif', label: 'FIF', desc: 'MNE 原生（推荐）' },
+  { value: 'set', label: 'SET', desc: 'EEGLAB 格式' },
+  { value: 'edf', label: 'EDF', desc: '标准格式' },
+];
+
 interface ExportDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,7 +19,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ isOpen, onClose, sessionId, hasEpochs }: ExportDialogProps) {
-  const [format, setFormat] = useState<'fif' | 'set' | 'edf'>('fif');
+  const [format, setFormat] = useState<ExportFormat>('fif');
   const [exportEpochs, setExportEpochs] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,14 +91,10 @@ export function ExportDialog({ isOpen, onClose, sessionId, hasEpochs }: ExportDi
               导出格式
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: 'fif', label: 'FIF', desc: 'MNE 原生（推荐）' },
-                { value: 'set', label: 'SET', desc: 'EEGLAB 格式' },
-                { value: 'edf', label: 'EDF', desc: '标准格式' },
-              ].map((f) => (
+              {EXPORT_FORMATS.map((f) => (
                 <button
                   key={f.value}
-                  onClick={() => setFormat(f.value as any)}
+                  onClick={() => setFormat(f.value)}
                   className={`p-3 rounded border text-left transition-all ${format === f.value
                       ? 'border-eeg-accent bg-eeg-accent/10 text-eeg-accent'
                       : 'border-eeg-border hover:border-eeg-accent/50 text-eeg-text hover:bg-eeg-hover'
