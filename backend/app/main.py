@@ -67,6 +67,11 @@ app.include_router(preprocessing.router, prefix="/api")
 app.include_router(visualization.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "healthy"}
+
 # 挂载前端静态文件（如果存在）
 if FRONTEND_DIST.exists():
     # 挂载 assets 目录
@@ -109,8 +114,3 @@ else:
             "docs": "/docs",
             "note": "Frontend not bundled. Run frontend dev server separately."
         }
-
-@app.get("/health")
-async def health_check():
-    """健康检查"""
-    return {"status": "healthy"}
