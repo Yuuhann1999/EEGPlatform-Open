@@ -30,6 +30,8 @@ function getChartThemeColors() {
   const textMuted = resolveCssVar('--color-eeg-text-muted') || '#657b83';
   const border = resolveCssVar('--color-eeg-border') || '#93a1a1';
   const surface = resolveCssVar('--color-eeg-surface') || '#eee8d5';
+  const background = resolveCssVar('--color-eeg-bg') || '#fdf6e3';
+  const textDark = resolveCssVar('--color-base02') || '#073642';
   const theme = document.documentElement.dataset.theme || 'solarized-light';
   const gridAlpha = theme === 'one-dark' ? 0.35 : 0.2;
   return {
@@ -37,6 +39,8 @@ function getChartThemeColors() {
     textMuted,
     border,
     surface,
+    background,
+    textDark,
     gridLine: hexToRgba(border, gridAlpha),
   };
 }
@@ -122,7 +126,7 @@ export function ERPChart({ sessionId, channels, displayMode, onRegisterExport }:
         keys.forEach((ch) => {
           const inst = multiChartRefs.current[ch]?.getEchartsInstance?.();
           if (!inst) return;
-          const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fdf6e3' });
+          const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: chartTheme.background });
           const a = document.createElement('a');
           a.href = dataUrl;
           a.download = `ERP-${ch}.png`;
@@ -814,9 +818,10 @@ export function TopoChart({
     const centerX = width / 2;
     const centerY = height / 2;
     const radius = Math.min(width, height) / 2 - 40;
+    const themeColors = getChartThemeColors();
 
-    // 清空画布 - 使用Solarized背景色
-    ctx.fillStyle = '#fdf6e3'; // base3
+    // 清空画布
+    ctx.fillStyle = themeColors.background;
     ctx.fillRect(0, 0, width, height);
 
     // 准备数据点（只使用有位置信息的通道）
@@ -866,7 +871,7 @@ export function TopoChart({
 
     if (dataPoints.length === 0) {
       // 没有任何有效电极位置时，给出提示而不是空白
-      ctx.fillStyle = '#586e75'; // base01
+      ctx.fillStyle = themeColors.text;
       ctx.font = '12px Inter';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -940,7 +945,7 @@ export function TopoChart({
     const valueRange = topoData.vmax - topoData.vmin;
     for (let i = 1; i < contourLevels; i++) {
       const level = topoData.vmin + (valueRange * i / contourLevels);
-      ctx.strokeStyle = 'rgba(88, 110, 117, 0.3)'; // base01 with transparency
+      ctx.strokeStyle = `rgba(88, 110, 117, 0.3)`;
       ctx.lineWidth = 0.5;
 
       // 简化的等高线绘制：在圆周上采样点
@@ -971,7 +976,7 @@ export function TopoChart({
     // 绘制头部轮廓 - 加粗线条
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = '#586e75'; // base01
+    ctx.strokeStyle = themeColors.text;
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -980,7 +985,7 @@ export function TopoChart({
     ctx.moveTo(centerX - 10, centerY - radius);
     ctx.lineTo(centerX, centerY - radius - 15);
     ctx.lineTo(centerX + 10, centerY - radius);
-    ctx.strokeStyle = '#586e75'; // base01
+    ctx.strokeStyle = themeColors.text;
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -1001,12 +1006,12 @@ export function TopoChart({
       // 电极圆点 - 黑色实心点
       ctx.beginPath();
       ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#073642'; // base02 (dark)
+      ctx.fillStyle = themeColors.textDark;
       ctx.fill();
 
       // 电极标签 - 小字体
       ctx.font = 'bold 8px Inter';
-      ctx.fillStyle = '#073642'; // base02
+      ctx.fillStyle = themeColors.textDark;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(point.name, point.x, point.y - 10);
@@ -1112,6 +1117,7 @@ export function TopoChart({
 
 export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => void) => void } = {}) {
   const { sessionId, selectedROI, currentData, events, displayMode } = useEEGStore();
+  const tfrThemeColors = getChartThemeColors();
 
   const availableEpochEventIds = currentData?.epochEventIds || [];
   const [eventId, setEventId] = useState<number | 'all'>('all');
@@ -1368,7 +1374,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
       if (tfrMode === 'roi') {
         const inst = singleChartRef.current?.getEchartsInstance?.();
         if (!inst) return;
-        const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fdf6e3' });
+        const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: tfrThemeColors.background });
         const a = document.createElement('a');
         a.href = dataUrl;
         a.download = `TFR-ROIavg-${fmin}-${fmax}Hz-${baselineMode}.png`;
@@ -1379,7 +1385,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
       Object.keys(multiRefs.current).forEach((ch) => {
         const inst = multiRefs.current[ch]?.getEchartsInstance?.();
         if (!inst) return;
-        const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fdf6e3' });
+        const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: tfrThemeColors.background });
         const a = document.createElement('a');
         a.href = dataUrl;
         a.download = `TFR-${ch}-${fmin}-${fmax}Hz-${baselineMode}.png`;

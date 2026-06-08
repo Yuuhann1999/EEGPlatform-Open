@@ -1,11 +1,8 @@
 """会话管理器 - 管理加载的 EEG 数据会话"""
 import uuid
-import copy
-from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta
 import mne
-from ..config import settings
 
 MAX_UNDO_STACK = 10  # 最大撤销步数
 

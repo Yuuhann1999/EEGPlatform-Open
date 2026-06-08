@@ -4,17 +4,9 @@ from fastapi.responses import FileResponse
 
 from ..schemas import DataExportRequest, OperationResponse
 from ..services.eeg_service import eeg_service
-from ..services.session_manager import session_manager
+from .deps import get_session_or_404
 
 router = APIRouter(prefix="/export", tags=["数据导出"])
-
-
-def get_session_or_404(session_id: str):
-    """获取会话或抛出 404"""
-    session = session_manager.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    return session
 
 
 @router.post("/data", response_model=OperationResponse)

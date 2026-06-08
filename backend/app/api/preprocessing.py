@@ -1,5 +1,5 @@
 """预处理 API"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ..schemas import (
@@ -9,19 +9,12 @@ from ..schemas import (
     OperationResponse
 )
 from ..services.eeg_service import eeg_service
-from ..services.session_manager import session_manager
+from .deps import get_session_or_404
 
 router = APIRouter(prefix="/preprocessing", tags=["预处理"])
 
 class UndoRedoRequest(BaseModel):
     session_id: str
-
-def get_session_or_404(session_id: str):
-    """获取会话或抛出 404"""
-    session = session_manager.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    return session
 
 @router.post("/undo", response_model=OperationResponse)
 async def undo_operation(request: UndoRedoRequest):

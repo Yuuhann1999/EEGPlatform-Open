@@ -1,7 +1,7 @@
 """FastAPI 主应用"""
 import sys
 import io
-import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # 设置标准输出编码为UTF-8，避免Windows GBK编码错误
@@ -21,14 +21,24 @@ from .api import workspace, waveform, preprocessing, visualization, filesystem, 
 def get_base_path():
     """获取基础路径（支持 PyInstaller 打包）"""
     if getattr(sys, 'frozen', False):
-        # PyInstaller 打包后的路径
         return Path(sys._MEIPASS)
     else:
-        # 开发环境
         return Path(__file__).parent.parent.parent
 
 BASE_PATH = get_base_path()
 FRONTEND_DIST = BASE_PATH / "frontend" / "dist"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    print(f"[START] {settings.APP_NAME} v{settings.APP_VERSION} starting...")
+    print(f"[CACHE] {settings.CACHE_DIR}")
+    print(f"[DOCS] http://{settings.HOST}:{settings.PORT}/docs")
+    yield
+    from .services.session_manager import session_manager
+    for sid in list(session_manager.get_all_sessions().keys()):
+        session_manager.remove_session(sid)
+    print("[SHUTDOWN] Application closed")
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -36,7 +46,8 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="本地化脑电数据预处理与可视化分析平台 API",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # 配置 CORS
@@ -63,30 +74,27 @@ if FRONTEND_DIST.exists():
     assets_dir = FRONTEND_DIST / "assets"
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
-    
+
     # 保存路径到变量（避免闭包问题）
     _index_file = FRONTEND_DIST / "index.html"
-    
+
     @app.get("/")
     async def serve_frontend():
         """服务前端首页"""
         if _index_file.exists():
             return FileResponse(str(_index_file))
         return {"name": settings.APP_NAME, "status": "running", "docs": "/docs"}
-    
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """SPA 路由支持 - 所有非 API 路由返回 index.html"""
-        # 跳过 API 和文档路由
         if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "health")):
             raise HTTPException(status_code=404, detail="Not found")
-        
-        # 尝试返回静态文件
+
         file_path = FRONTEND_DIST / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(str(file_path))
-        
-        # 否则返回 index.html（SPA 路由）
+
         index_file = FRONTEND_DIST / "index.html"
         if index_file.exists():
             return FileResponse(str(index_file))
@@ -107,20 +115,3 @@ else:
 async def health_check():
     """健康检查"""
     return {"status": "healthy"}
-
-# 启动和关闭事件
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时执行"""
-    print(f"[START] {settings.APP_NAME} v{settings.APP_VERSION} starting...")
-    print(f"[CACHE] {settings.CACHE_DIR}")
-    print(f"[DOCS] http://{settings.HOST}:{settings.PORT}/docs")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时执行"""
-    from .services.session_manager import session_manager
-    # 清理所有会话
-    for sid in list(session_manager.get_all_sessions().keys()):
-        session_manager.remove_session(sid)
-    print("[SHUTDOWN] Application closed")

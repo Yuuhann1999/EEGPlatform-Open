@@ -2,11 +2,8 @@
  * API 服务层 - 封装与后端的所有通信
  */
 
-// 动态获取 API 地址：打包后使用同源地址，开发时使用 8088 端口
-const isDev = window.location.port === '5173';  // Vite 开发服务器端口
-export const API_BASE_URL = isDev 
-  ? 'http://localhost:8088/api'  // 开发模式
-  : `${window.location.origin}/api`;  // 生产模式（打包后）
+// 开发模式下 Vite proxy 将 /api 转发到 localhost:8088，生产模式同源访问
+export const API_BASE_URL = '/api';
 
 // ============ 通用请求方法 ============
 

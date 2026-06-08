@@ -3,7 +3,7 @@ import uuid
 import asyncio
 import traceback
 from pathlib import Path
-from typing import Optional, Callable, AsyncGenerator
+from typing import Optional
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 

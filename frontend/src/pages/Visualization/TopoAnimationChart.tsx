@@ -6,6 +6,24 @@ import type { TopoAnimationResponse } from '../../services/api';
 // @ts-ignore - gifshot 没有类型定义
 import gifshot from 'gifshot';
 
+function resolveCssVar(name: string): string {
+  const styles = getComputedStyle(document.documentElement);
+  const value = styles.getPropertyValue(name).trim();
+  if (value.startsWith('var(')) {
+    const inner = value.slice(4, -1).trim();
+    return styles.getPropertyValue(inner).trim();
+  }
+  return value;
+}
+
+function getTopoThemeColors() {
+  return {
+    background: resolveCssVar('--color-eeg-bg') || '#fdf6e3',
+    text: resolveCssVar('--color-eeg-text') || '#586e75',
+    textDark: resolveCssVar('--color-base02') || '#073642',
+  };
+}
+
 interface TopoAnimationChartProps {
   sessionId: string | null;
   startTime: number;
@@ -391,8 +409,10 @@ function drawTopoFrame(
   const centerY = height / 2;
   const radius = Math.min(width, height) / 2 - 40;
 
-  // 清空画布 - 使用Solarized背景色
-  ctx.fillStyle = '#fdf6e3'; // base3
+  const themeColors = getTopoThemeColors();
+
+  // 清空画布
+  ctx.fillStyle = themeColors.background;
   ctx.fillRect(0, 0, width, height);
 
   // 计算颜色范围
@@ -437,7 +457,7 @@ function drawTopoFrame(
   });
 
   if (dataPoints.length === 0) {
-    ctx.fillStyle = '#586e75'; // base01
+    ctx.fillStyle = themeColors.text;
     ctx.font = '12px Inter';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -509,7 +529,7 @@ function drawTopoFrame(
   const contourLevels = 8;
   for (let i = 1; i < contourLevels; i++) {
     const level = valueMin + (valueRange * i / contourLevels);
-    ctx.strokeStyle = 'rgba(88, 110, 117, 0.3)'; // base01 with transparency
+    ctx.strokeStyle = `rgba(88, 110, 117, 0.3)`;
     ctx.lineWidth = 0.5;
 
     // 简化的等高线绘制：在圆周上采样点
@@ -540,7 +560,7 @@ function drawTopoFrame(
   // 绘制头部轮廓 - 加粗线条
   ctx.beginPath();
   ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-  ctx.strokeStyle = '#586e75'; // base01
+  ctx.strokeStyle = themeColors.text;
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -549,7 +569,7 @@ function drawTopoFrame(
   ctx.moveTo(centerX - 10, centerY - radius);
   ctx.lineTo(centerX, centerY - radius - 15);
   ctx.lineTo(centerX + 10, centerY - radius);
-  ctx.strokeStyle = '#586e75'; // base01
+  ctx.strokeStyle = themeColors.text;
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -570,12 +590,12 @@ function drawTopoFrame(
     // 电极圆点 - 黑色实心点
     ctx.beginPath();
     ctx.arc(point.x, point.y, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#073642'; // base02 (dark)
+    ctx.fillStyle = themeColors.textDark;
     ctx.fill();
 
     // 电极标签 - 小字体
     ctx.font = 'bold 8px Inter';
-    ctx.fillStyle = '#073642'; // base02
+    ctx.fillStyle = themeColors.textDark;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(point.name, point.x, point.y + 10);

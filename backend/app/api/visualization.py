@@ -1,5 +1,5 @@
 """可视化数据 API"""
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from ..schemas import (
     ERPRequest, ERPData,
@@ -9,17 +9,10 @@ from ..schemas import (
     TFRRequest, TFRStartResponse, TFRJobResponse
 )
 from ..services.eeg_service import eeg_service
-from ..services.session_manager import session_manager
 from ..services.tfr_jobs import tfr_job_manager
+from .deps import get_session_or_404
 
 router = APIRouter(prefix="/visualization", tags=["可视化"])
-
-def get_session_or_404(session_id: str):
-    """获取会话或抛出 404"""
-    session = session_manager.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    return session
 
 @router.post("/erp", response_model=ERPData)
 async def get_erp_data(request: ERPRequest):
@@ -84,7 +77,7 @@ async def get_available_montages():
         montages = eeg_service.get_available_montages()
         return {"montages": montages}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取蒙特卡列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取电极定位模板列表失败: {str(e)}")
 
 
 @router.post("/topomap/animation", response_model=TopoAnimationResponse)

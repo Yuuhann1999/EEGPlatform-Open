@@ -113,7 +113,7 @@ export const useEEGStore = create<EEGState>((set) => ({
   setWaveformData: (data) => set({ waveformData: data }),
 
   savePreProcessingWaveform: () => set((state) => ({
-    preProcessingWaveform: state.waveformData ? { ...state.waveformData } : null
+    preProcessingWaveform: state.waveformData ? JSON.parse(JSON.stringify(state.waveformData)) : null
   })),
 
   clearPreProcessingWaveform: () => set({ preProcessingWaveform: null }),
@@ -195,9 +195,15 @@ export const useEEGStore = create<EEGState>((set) => ({
     sessionId: null,
     currentData: null,
     waveformData: null,
+    preProcessingWaveform: null,
+    viewTimeRange: [0, 10],
     events: [],
     pipelineSteps: [],
     currentStepIndex: -1,
+    selectedROI: [],
+    displayMode: 'butterfly',
+    chartType: 'erp',
+    batchJob: null,
     error: null,
   }),
 

@@ -265,7 +265,7 @@ class EEGService:
                                                             ch_types[i] = 'emg'
                                                         elif 'stim' in ch_type_lower or 'trigger' in ch_type_lower:
                                                             ch_types[i] = 'stim'
-                                    except:
+                                    except (ValueError, KeyError):
                                         pass
                                 
                                 info = mne.create_info(
@@ -392,7 +392,7 @@ class EEGService:
                     if test_epochs is not None:
                         is_likely_epochs = True
                         print(f"警告: FIF 文件包含 Epochs 数据")
-                except:
+                except Exception:
                     # 无法读取 epochs，说明是 Raw 数据（正常情况）
                     pass
 
@@ -485,7 +485,7 @@ class EEGService:
         if meas_date is not None:
             try:
                 measurement_date = str(meas_date)[:10]  # 只取日期部分
-            except:
+            except (ValueError, TypeError):
                 pass
         
         # 检查是否有 epochs
@@ -634,7 +634,7 @@ class EEGService:
                         try:
                             # annotations的description可能是事件ID
                             event_id = int(ann['description'])
-                        except:
+                        except (ValueError, TypeError):
                             pass
                         events_list.append(WaveformEvent(
                             time=ann_time,
@@ -679,8 +679,6 @@ class EEGService:
             start_time: 起始epoch索引（为了兼容API，这里作为epoch索引使用）
             duration: 要显示的epoch数量
         """
-        import numpy as np
-        
         # 检查epochs是否为空
         if len(epochs) == 0:
             raise ValueError(
@@ -875,7 +873,12 @@ class EEGService:
         raw = session.raw
         if raw is None:
             raise ValueError("会话中没有加载的数据")
-        
+
+        session.save_state("set_bad_channel", {
+            "channel_name": channel_name,
+            "is_bad": is_bad
+        })
+
         if is_bad:
             if channel_name not in raw.info['bads']:
                 raw.info['bads'].append(channel_name)
@@ -894,7 +897,9 @@ class EEGService:
         raw = session.raw
         if raw is None:
             raise ValueError("会话中没有加载的数据")
-        
+
+        session.save_state("set_montage", {"montage_name": montage_name})
+
         try:
             montage = mne.channels.make_standard_montage(montage_name)
             montage_ch_names = set(montage.ch_names)
@@ -956,8 +961,7 @@ class EEGService:
         excluded_ics = []
         try:
             from mne_icalabel import label_components
-            import numpy as np
-            
+
             labels = label_components(raw, ica, method='iclabel')
             
             # 根据阈值和标签类型排除成分
@@ -1044,7 +1048,6 @@ class EEGService:
                 excluded_ics = []
         except Exception as e:
             print(f"ICA 标签识别失败: {e}")
-            import traceback
             traceback.print_exc()
             # 如果自动识别失败，返回空列表（不排除任何成分）
             excluded_ics = []
@@ -1161,7 +1164,7 @@ class EEGService:
     @staticmethod
     def rename_events(session: EEGSession, event_mappings: dict[int, str]) -> None:
         """重命名事件标签
-        
+
         Args:
             session: EEG 会话
             event_mappings: 事件 ID 到新标签的映射字典
@@ -1169,7 +1172,9 @@ class EEGService:
         raw = session.raw
         if raw is None:
             raise ValueError("会话中没有加载的数据")
-        
+
+        session.save_state("rename_events", {"event_mappings": event_mappings})
+
         # 处理 annotations 中的事件重命名
         if raw.annotations and len(raw.annotations) > 0:
             # 创建新的 descriptions 列表
@@ -1485,7 +1490,6 @@ class EEGService:
             import matplotlib
             matplotlib.use('Agg')  # 使用非交互式后端
             import matplotlib.pyplot as plt
-            from matplotlib.backends.backend_agg import FigureCanvasAgg
 
             # 归一化电极位置（与前端Canvas静态地形图一致）
             # 为 A1/A2 设置正确的耳朵位置
@@ -1676,7 +1680,6 @@ class EEGService:
             import matplotlib
             matplotlib.use('Agg')
             import matplotlib.pyplot as plt
-            from matplotlib.backends.backend_agg import FigureCanvasAgg
 
             # 归一化电极位置（与前端Canvas静态地形图一致）
             # 为 A1/A2 设置正确的耳朵位置
@@ -1796,9 +1799,6 @@ class EEGService:
         Returns:
             dict: 包含输出文件路径和导出信息
         """
-        import os
-        from pathlib import Path
-
         # 获取导出对象
         if export_epochs:
             if session.epochs is None:
@@ -1921,7 +1921,7 @@ class EEGService:
                 # 清理临时文件
                 try:
                     os.remove(tmp_path)
-                except:
+                except OSError:
                     pass
 
         else:
