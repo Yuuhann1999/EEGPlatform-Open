@@ -1,5 +1,6 @@
 """会话管理器 - 管理加载的 EEG 数据会话"""
 import uuid
+from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta
 import mne
@@ -148,8 +149,16 @@ class SessionManager:
     
     def remove_session(self, session_id: str):
         """移除会话"""
-        if session_id in self._sessions:
-            del self._sessions[session_id]
+        session = self._sessions.pop(session_id, None)
+        if session:
+            try:
+                from ..config import settings
+                file_path = Path(session.file_path).resolve()
+                upload_dir = settings.UPLOAD_DIR.resolve()
+                if upload_dir in file_path.parents and file_path.exists():
+                    file_path.unlink()
+            except OSError:
+                pass
     
     def cleanup_expired(self):
         """清理过期会话"""
@@ -167,4 +176,3 @@ class SessionManager:
 
 # 全局单例
 session_manager = SessionManager()
-

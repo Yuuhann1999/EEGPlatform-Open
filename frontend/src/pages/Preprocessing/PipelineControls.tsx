@@ -521,56 +521,51 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
             </div>
           </AccordionItem>
 
-          {/* 批量预处理入口 */}
-          <div className="mt-4 pt-4 border-t border-eeg-border">
-            <div className="group relative overflow-hidden rounded-xl border border-eeg-border bg-eeg-surface hover:border-eeg-active/50 transition-all duration-300">
-              {/* 背景渐变效果 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-eeg-active/5 via-transparent to-eeg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+          {onOpenBatchProcessing && (
+            <div className="mt-4 pt-4 border-t border-eeg-border">
+              <div className="group relative overflow-hidden rounded-xl border border-eeg-border bg-eeg-surface hover:border-eeg-active/50 transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-eeg-active/5 via-transparent to-eeg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
-              {/* 顶部强调条 */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-eeg-active via-eeg-accent to-eeg-active opacity-60" />
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-eeg-active via-eeg-accent to-eeg-active opacity-60" />
 
-              <div className="relative p-3">
-                <div className="flex items-start gap-3">
-                  {/* 左侧图标区域 */}
-                  <div className="flex-shrink-0">
-                    <div className="relative">
-                      <div className="w-10 h-10 rounded-lg bg-eeg-active/10 border border-eeg-active/20 flex items-center justify-center group-hover:scale-105 group-hover:bg-eeg-active/15 transition-all duration-300">
-                        <Copy size={20} className="text-eeg-accent" />
+                <div className="relative p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-lg bg-eeg-active/10 border border-eeg-active/20 flex items-center justify-center group-hover:scale-105 group-hover:bg-eeg-active/15 transition-all duration-300">
+                          <Copy size={20} className="text-eeg-accent" />
+                        </div>
+                        <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-eeg-success border-2 border-eeg-surface" />
                       </div>
-                      {/* 装饰性小点 */}
-                      <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-eeg-success border-2 border-eeg-surface" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <h3 className="text-sm font-semibold text-eeg-text">
+                          批量预处理
+                        </h3>
+                      </div>
+                      <p className="text-xs text-eeg-text-muted leading-relaxed line-clamp-2">
+                        多文件统一流程，一键执行并导出结果
+                      </p>
                     </div>
                   </div>
 
-                  {/* 中间内容区域 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-sm font-semibold text-eeg-text">
-                        批量预处理
-                      </h3>
-                    </div>
-                    <p className="text-xs text-eeg-text-muted leading-relaxed line-clamp-2">
-                      多文件统一流程，一键执行并导出结果
-                    </p>
+                  <div className="mt-3 flex items-center gap-3">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="flex-1 group-hover:shadow-lg group-hover:shadow-eeg-active/20 transition-shadow duration-300"
+                      onClick={onOpenBatchProcessing}
+                    >
+                      <Copy size={16} className="mr-2" />
+                      开始批量处理
+                    </Button>
                   </div>
-                </div>
-
-                {/* 底部按钮区域 */}
-                <div className="mt-3 flex items-center gap-3">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="flex-1 group-hover:shadow-lg group-hover:shadow-eeg-active/20 transition-shadow duration-300"
-                    onClick={onOpenBatchProcessing}
-                  >
-                    <Copy size={16} className="mr-2" />
-                    开始批量处理
-                  </Button>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </Accordion.Root>
       </div>
     </div>

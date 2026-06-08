@@ -2,8 +2,9 @@
  * API 服务层 - 封装与后端的所有通信
  */
 
-// 开发模式下 Vite proxy 将 /api 转发到 localhost:8088，生产模式同源访问
-export const API_BASE_URL = '/api';
+// 开发模式下 Vite proxy 将 /api 转发到 localhost:8088，生产模式可通过 VITE_API_BASE_URL 指向公网后端
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+export const API_BASE_URL = (configuredApiBaseUrl || '/api').replace(/\/$/, '');
 
 // ============ 通用请求方法 ============
 
@@ -234,6 +235,33 @@ export const workspaceApi = {
       method: 'POST',
       body: JSON.stringify({ file_path: filePath }),
     });
+  },
+
+  /**
+   * 上传并加载数据文件
+   */
+  async uploadData(file: File): Promise<{
+    info: EEGDataInfo;
+    events: EventInfo[];
+    session_id: string;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE_URL}/workspace/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: '请求失败' }));
+      const errorMessage = error.detail || error.message || `HTTP ${response.status}`;
+      const errorWithStatus = new Error(errorMessage);
+      (errorWithStatus as any).status = response.status;
+      throw errorWithStatus;
+    }
+
+    return response.json();
   },
 
   /**

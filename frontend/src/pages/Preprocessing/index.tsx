@@ -1,20 +1,34 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Eye, EyeOff, Loader2, FileAudio, Clock, Radio, Activity, FolderSearch, Search, FolderOpen, ChevronDown, ChevronRight, FileText, Circle, Download } from 'lucide-react';
-import { Alert, Button, Input } from '../../components/ui';
-import { FolderBrowser } from '../../components/FolderBrowser';
+import type { ChangeEvent } from 'react';
+import { Eye, EyeOff, Loader2, FileAudio, Clock, Radio, Activity, Download, Upload } from 'lucide-react';
+import { Alert, Button } from '../../components/ui';
 import { ExportDialog } from '../../components/ExportDialog';
-import { BatchProcessingDialog, type BatchProcessingConfig, type BatchJobProgress } from '../../components/BatchProcessingDialog';
 import { PipelineControls } from './PipelineControls';
 import { WaveformViewer } from './WaveformViewer';
 import { SidePanel } from './SidePanel';
 import { ThemeToggleButton } from '../../components/ThemeToggleButton';
 import { useEEGStore } from '../../stores/eegStore';
-import { waveformApi, preprocessingApi, workspaceApi, batchApi, type BatchJobStatus } from '../../services/api';
-import { generateMockWaveform, mockFiles, mockDataInfo, mockEvents } from '../../mock/eegData';
+import { waveformApi, preprocessingApi, workspaceApi } from '../../services/api';
+import { generateMockWaveform } from '../../mock/eegData';
 import type { WaveformData, EEGFile } from '../../types/eeg';
 import { formatDuration } from '../../utils/format';
-import { cn } from '../../utils/cn';
 import { convertApiDataInfo, convertApiEvents } from '../../utils/apiMappers';
+
+const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
+const SUPPORTED_EEG_EXTENSIONS = ['.edf', '.bdf', '.gdf', '.set', '.fif'];
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function getFileFormat(fileName: string): EEGFile['format'] {
+  const ext = fileName.toLowerCase().split('.').pop();
+  if (ext === 'set' || ext === 'fif') return ext;
+  return 'edf';
+}
 
 export function PreprocessingPage() {
   const [showOverlay, setShowOverlay] = useState(false);
@@ -24,9 +38,9 @@ export function PreprocessingPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // 批量处理状态
-  const [showBatchDialog, setShowBatchDialog] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<BatchJobProgress | undefined>(undefined);
+  const [apiConnected, setApiConnected] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 自动清除成功消息
   useEffect(() => {
@@ -38,14 +52,6 @@ export function PreprocessingPage() {
     }
   }, [success]);
 
-  // 工作区状态
-  const [workspacePath, setWorkspacePath] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
-  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
-  const [useApi, setUseApi] = useState(true);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['root']));
-
-  
   // 使用ref跟踪epoch模式，避免依赖循环
   const isEpochModeRef = useRef(false);
   
@@ -71,75 +77,78 @@ export function PreprocessingPage() {
     setEvents,
     isLoading: _isLoading,
     setLoading,
+    resetSession,
   } = useEEGStore();
 
-  // 选择文件夹
-  const handleSelectFolder = async (path: string) => {
-    setWorkspacePath(path);
-    setIsBrowserOpen(false);
-    if (path.trim()) {
-      setIsScanning(true);
-      setError(null);
-      
-      try {
-        if (useApi) {
-          const result = await workspaceApi.scanDirectory(path);
-          const convertedFiles: EEGFile[] = result.files.map(f => ({
-            id: f.id,
-            name: f.name,
-            path: f.path,
-            format: f.format,
-            size: f.size,
-            status: f.status,
-            modifiedAt: f.modified_at,
-          }));
-          setFiles(convertedFiles);
-          
-          if (convertedFiles.length === 0) {
-            setError('未找到支持的 EEG 文件 (.edf, .set, .fif)');
-          }
-        } else {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          setFiles(mockFiles);
-        }
-      } catch (err: any) {
-        console.warn('API 调用失败，使用 Mock 数据:', err);
-        setError('无法连接到后端服务，已切换到演示模式');
-        setFiles(mockFiles);
-        setUseApi(false);
-      } finally {
-        setIsScanning(false);
-      }
-    }
-  };
+  const handleUploadFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
 
-  // 加载文件
-  const handleLoadFile = useCallback(async (file: EEGFile) => {
+    const suffix = `.${file.name.split('.').pop()?.toLowerCase() || ''}`;
+    if (!SUPPORTED_EEG_EXTENSIONS.includes(suffix)) {
+      setError(`不支持的文件格式。支持: ${SUPPORTED_EEG_EXTENSIONS.join(', ')}`);
+      return;
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      setError(`文件过大，最大允许 ${formatFileSize(MAX_UPLOAD_SIZE_BYTES)}`);
+      return;
+    }
+
+    const uploadedFile: EEGFile = {
+      id: `upload-${Date.now()}`,
+      name: file.name,
+      path: file.name,
+      format: getFileFormat(file.name),
+      size: file.size,
+      status: 'processing',
+      modifiedAt: new Date(file.lastModified || Date.now()).toISOString(),
+    };
+
+    resetSession();
+    setFiles([uploadedFile]);
+    selectFile(uploadedFile);
     setLoading(true);
+    setIsUploading(true);
+    setApiConnected(true);
     setError(null);
-    selectFile(file);
-    
+    setSuccess(null);
+    isEpochModeRef.current = false;
+
     try {
-      if (useApi) {
-        const result = await workspaceApi.loadData(file.path);
-        setSessionId(result.session_id);
-        setCurrentData(convertApiDataInfo(result.info));
-        setEvents(convertApiEvents(result.events));
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        setCurrentData(mockDataInfo);
-        setEvents(mockEvents);
-      }
+      const result = await workspaceApi.uploadData(file);
+      const loadedFile = {
+        ...uploadedFile,
+        id: result.session_id,
+        status: 'completed' as const,
+      };
+      setFiles([loadedFile]);
+      selectFile(loadedFile);
+      setSessionId(result.session_id);
+      setCurrentData(convertApiDataInfo(result.info));
+      setEvents(convertApiEvents(result.events));
+      setViewTimeRange([0, 10]);
+      setSuccess(`已加载 ${file.name}`);
     } catch (err: any) {
-      console.warn('加载数据失败:', err);
-      setError(`加载失败: ${err.message || '未知错误'}，已切换到演示模式`);
-      setCurrentData(mockDataInfo);
-      setEvents(mockEvents);
-      setUseApi(false);
+      console.warn('上传或加载数据失败:', err);
+      setApiConnected(false);
+      setFiles([{ ...uploadedFile, status: 'unprocessed' }]);
+      setError(`上传失败: ${err.message || '未知错误'}`);
     } finally {
       setLoading(false);
+      setIsUploading(false);
     }
-  }, [useApi, setSessionId, setCurrentData, setEvents, setLoading, selectFile]);
+  }, [
+    resetSession,
+    setFiles,
+    selectFile,
+    setLoading,
+    setSessionId,
+    setCurrentData,
+    setEvents,
+    setViewTimeRange,
+  ]);
 
   // 从后端获取波形数据
   const fetchWaveform = useCallback(async (startTime: number = 0, duration: number = 10, forceEpochMode?: boolean) => {
@@ -510,116 +519,8 @@ export function PreprocessingPage() {
     setViewTimeRange([start, end]);
   }, [setViewTimeRange]);
 
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      if (next.has(folderId)) {
-        next.delete(folderId);
-      } else {
-        next.add(folderId);
-      }
-      return next;
-    });
-  };
-
-  const statusColors = {
-    unprocessed: 'text-eeg-text-muted',
-    processing: 'text-eeg-processing animate-pulse',
-    completed: 'text-eeg-success',
-  };
-
-  // 批量预处理处理函数
-  const handleStartBatchProcessing = async (config: BatchProcessingConfig) => {
-    console.log('开始批量预处理:', config);
-    
-    try {
-      // 调用后端 API 启动批量处理任务
-      const response = await batchApi.startBatch({
-        file_paths: config.selectedFiles,
-        preprocessing_steps: config.preprocessingSteps,
-        output_dir: config.outputDir,
-        output_format: config.outputFormat,
-        export_epochs: config.exportEpochs
-      });
-      
-      const jobId = response.job_id;
-      console.log('批量处理任务已启动, jobId:', jobId);
-      
-      // 初始化本地进度状态
-      const totalFiles = config.selectedFiles.length;
-      const initialProgress: BatchJobProgress = {
-        totalFiles,
-        completedFiles: 0,
-        failedFiles: 0,
-        currentFile: null,
-        currentStep: null,
-        progress: 0,
-        status: 'running',
-        errorMessage: null,
-        results: config.selectedFiles.map(path => ({
-          filePath: path,
-          fileName: path.split('/').pop() || path,
-          status: 'pending'
-        }))
-      };
-      setBatchProgress(initialProgress);
-      
-      // 使用 SSE 订阅实时进度
-      const eventSource = batchApi.subscribeProgress(
-        jobId,
-        (status: BatchJobStatus) => {
-          // 转换后端状态到前端格式
-          const progress: BatchJobProgress = {
-            totalFiles: status.total_files,
-            completedFiles: status.completed_files,
-            failedFiles: status.failed_files,
-            currentFile: status.current_file,
-            currentStep: status.current_step,
-            progress: status.progress,
-            status: status.status,
-            errorMessage: status.error_message,
-            results: status.results.map(r => ({
-              filePath: r.file_path,
-              fileName: r.file_name,
-              status: r.status,
-              outputPath: r.output_path,
-              error: r.error,
-              processingTime: r.processing_time
-            }))
-          };
-          setBatchProgress(progress);
-          
-          // 如果任务完成，关闭 EventSource
-          if (['completed', 'failed', 'cancelled'].includes(status.status)) {
-            eventSource.close();
-            if (status.status === 'completed') {
-              setSuccess(`批量处理完成！成功: ${status.completed_files} 个文件${status.failed_files > 0 ? `, 失败: ${status.failed_files} 个文件` : ''}`);
-            } else if (status.status === 'failed') {
-              setError(`批量处理失败: ${status.error_message || '未知错误'}`);
-            }
-          }
-        },
-        (error) => {
-          console.error('SSE 连接错误:', error);
-          eventSource.close();
-        }
-      );
-      
-    } catch (error) {
-      console.error('启动批量处理失败:', error);
-      setError(`启动批量处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    }
-  };
-
   return (
     <div className="h-full flex flex-col">
-      {/* 文件夹浏览对话框 */}
-      <FolderBrowser
-        isOpen={isBrowserOpen}
-        onClose={() => setIsBrowserOpen(false)}
-        onSelect={handleSelectFolder}
-      />
-
       {/* 顶部数据信息栏 - 浓缩显示 */}
       <div className="flex-shrink-0 h-10 px-4 bg-eeg-surface border-b border-eeg-border flex items-center gap-6">
         <div className="flex items-center gap-2 text-sm">
@@ -664,9 +565,9 @@ export function PreprocessingPage() {
 
           {/* API状态 */}
           <div className="flex items-center gap-2 text-xs">
-            <div className={`w-2 h-2 rounded-full ${useApi ? 'bg-eeg-success' : 'bg-eeg-warning'}`} />
+            <div className={`w-2 h-2 rounded-full ${apiConnected ? 'bg-eeg-success' : 'bg-eeg-warning'}`} />
             <span className="text-eeg-text-muted">
-              {useApi ? '后端已连接' : '演示模式'}
+              {apiConnected ? '后端已连接' : '后端连接异常'}
             </span>
           </div>
 
@@ -680,76 +581,47 @@ export function PreprocessingPage() {
         <div className="w-64 flex-shrink-0 flex flex-col border-r border-eeg-border">
           {/* 文件选择区域 - 可折叠 */}
           <div className="flex-shrink-0 border-b border-eeg-border">
-            {/* 路径输入 */}
             <div className="p-2 space-y-2">
-              <div className="flex gap-1">
-                <Input
-                  value={workspacePath}
-                  onChange={(e) => setWorkspacePath(e.target.value)}
-                  placeholder="输入或选择文件夹路径"
-                  leftIcon={<FolderSearch size={14} />}
-                  className="text-xs"
-                />
-                <Button 
-                  variant="secondary" 
-                  size="sm"
-                  onClick={() => setIsBrowserOpen(true)}
-                  title="浏览"
-                  className="px-2"
-                >
-                  <FolderOpen size={14} />
-                </Button>
-              </div>
-              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={SUPPORTED_EEG_EXTENSIONS.join(',')}
+                className="hidden"
+                onChange={handleUploadFile}
+              />
               <Button 
                 className="w-full" 
                 size="sm"
-                onClick={() => handleSelectFolder(workspacePath)}
-                isLoading={isScanning}
-                disabled={!workspacePath.trim()}
+                onClick={() => fileInputRef.current?.click()}
+                isLoading={isUploading}
+                disabled={isUploading || _isLoading}
               >
-                <Search size={14} className="mr-1" />
-                扫描
+                <Upload size={14} className="mr-1" />
+                上传 EEG 文件
               </Button>
+              <p className="text-xs text-eeg-text-muted leading-relaxed">
+                支持 EDF/BDF/GDF/SET/FIF，最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
+              </p>
             </div>
             
-            {/* 文件树 - 紧凑显示 */}
             {files.length > 0 && (
               <div className="max-h-48 overflow-auto px-2 pb-2">
-                <div
-                  className="flex items-center gap-1 px-1 py-1 cursor-pointer hover:bg-eeg-hover rounded text-xs"
-                  onClick={() => toggleFolder('root')}
-                >
-                  {expandedFolders.has('root') ? (
-                    <ChevronDown size={12} className="text-eeg-text-muted" />
-                  ) : (
-                    <ChevronRight size={12} className="text-eeg-text-muted" />
-                  )}
-                  <span className="text-eeg-text font-medium">文件 ({files.length})</span>
-                </div>
-                
-                {expandedFolders.has('root') && (
-                  <div className="ml-3 space-y-0.5">
-                    {files.map((file) => (
-                      <div
-                        key={file.id}
-                        className={cn(
-                          'flex items-center gap-1 px-1 py-1 rounded cursor-pointer transition-colors text-xs',
-                          selectedFile?.id === file.id
-                            ? 'bg-eeg-active/20 text-eeg-accent'
-                            : 'hover:bg-eeg-hover'
-                        )}
-                        onClick={() => selectFile(file)}
-                        onDoubleClick={() => handleLoadFile(file)}
-                        title="双击加载"
-                      >
-                        <FileText size={12} className="text-eeg-accent flex-shrink-0" />
-                        <span className="text-eeg-text truncate flex-1">{file.name}</span>
-                        <Circle size={6} className={cn('fill-current flex-shrink-0', statusColors[file.status])} />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {files.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    className="w-full flex items-start gap-2 px-2 py-2 rounded border border-eeg-border bg-eeg-bg text-left"
+                    onClick={() => selectFile(file)}
+                  >
+                    <FileAudio size={14} className="text-eeg-accent flex-shrink-0 mt-0.5" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs text-eeg-text truncate">{file.name}</span>
+                      <span className="block text-[11px] text-eeg-text-muted">
+                        {formatFileSize(file.size)} · {file.status === 'completed' ? '已加载' : file.status === 'processing' ? '上传中' : '未加载'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -761,7 +633,6 @@ export function PreprocessingPage() {
               onUndo={handleUndo}
               onRedo={handleRedo}
               isProcessing={isProcessing}
-              onOpenBatchProcessing={() => setShowBatchDialog(true)}
             />
           </div>
         </div>
@@ -854,20 +725,6 @@ export function PreprocessingPage() {
         hasEpochs={currentData?.hasEpochs ?? false}
       />
 
-      {/* 批量预处理对话框 */}
-      <BatchProcessingDialog
-        isOpen={showBatchDialog}
-        onClose={() => {
-          setShowBatchDialog(false);
-        }}
-        onReset={() => {
-          setBatchProgress(undefined);
-        }}
-        files={files}
-        workspacePath={workspacePath}
-        onStartBatch={handleStartBatchProcessing}
-        batchProgress={batchProgress}
-      />
     </div>
   );
 }

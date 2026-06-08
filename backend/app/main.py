@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from .config import settings
-from .api import workspace, waveform, preprocessing, visualization, filesystem, export, batch
+from .api import workspace, waveform, preprocessing, visualization, export
 
 # 判断是否为打包环境
 def get_base_path():
@@ -64,9 +64,7 @@ app.include_router(workspace.router, prefix="/api")
 app.include_router(waveform.router, prefix="/api")
 app.include_router(preprocessing.router, prefix="/api")
 app.include_router(visualization.router, prefix="/api")
-app.include_router(filesystem.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
-app.include_router(batch.router, prefix="/api/batch")
 
 # 挂载前端静态文件（如果存在）
 if FRONTEND_DIST.exists():
