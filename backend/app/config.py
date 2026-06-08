@@ -2,6 +2,7 @@
 import sys
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from typing import Optional
 
 def get_cache_dir() -> Path:
     """
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
         "http://localhost:8088",
         "http://127.0.0.1:8088",
     ]
+    CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
 
     # 缓存目录
     CACHE_DIR: Path = get_cache_dir()

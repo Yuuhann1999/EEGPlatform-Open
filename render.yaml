@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: eegplatform-api
+    runtime: docker
+    plan: free
+    branch: feature/upload-eeg-public
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: MAX_UPLOAD_SIZE_MB
+        value: 100
+      - key: TFR_N_JOBS
+        value: 1
