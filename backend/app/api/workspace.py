@@ -15,6 +15,25 @@ from ..services.session_manager import session_manager
 router = APIRouter(prefix="/workspace", tags=["工作区"])
 
 
+async def save_upload(upload_file: UploadFile, upload_path: Path, max_bytes: int, used_bytes: int = 0) -> int:
+    """保存上传文件，并按总上传大小限制写入。"""
+    total_size = 0
+    with upload_path.open("wb") as output:
+        while chunk := await upload_file.read(1024 * 1024):
+            total_size += len(chunk)
+            if used_bytes + total_size > max_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"文件过大，最大允许 {settings.MAX_UPLOAD_SIZE_MB}MB"
+                )
+            output.write(chunk)
+
+    if total_size == 0:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+
+    return total_size
+
+
 async def load_file_response(file_path: str) -> LoadDataResponse:
     """加载 EEG 文件并返回会话信息"""
     print(f"开始加载文件: {file_path}")
@@ -50,7 +69,10 @@ async def load_data(_request: LoadDataRequest):
 
 
 @router.post("/upload", response_model=LoadDataResponse)
-async def upload_data(file: UploadFile = File(...)):
+async def upload_data(
+    file: UploadFile = File(...),
+    companion_files: list[UploadFile] | None = File(default=None),
+):
     """上传并加载 EEG 数据文件"""
     original_name = Path(file.filename or "").name
     suffix = Path(original_name).suffix.lower()
@@ -63,42 +85,53 @@ async def upload_data(file: UploadFile = File(...)):
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     upload_name = f"{uuid.uuid4().hex[:12]}_{original_name}"
     upload_path = settings.UPLOAD_DIR / upload_name
-    total_size = 0
+    saved_paths = [upload_path]
 
     try:
-        with upload_path.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
-                total_size += len(chunk)
-                if total_size > max_bytes:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"文件过大，最大允许 {settings.MAX_UPLOAD_SIZE_MB}MB"
-                    )
-                output.write(chunk)
+        total_size = await save_upload(file, upload_path, max_bytes)
+
+        if suffix == ".set":
+            set_stem = Path(original_name).stem.lower()
+            for companion_file in companion_files or []:
+                companion_name = Path(companion_file.filename or "").name
+                companion_path = Path(companion_name)
+                if companion_path.suffix.lower() != ".fdt" or companion_path.stem.lower() != set_stem:
+                    continue
+
+                saved_companion_path = upload_path.with_suffix(".fdt")
+                saved_paths.append(saved_companion_path)
+                total_size += await save_upload(companion_file, saved_companion_path, max_bytes, total_size)
+                break
     except HTTPException:
-        upload_path.unlink(missing_ok=True)
+        for saved_path in saved_paths:
+            saved_path.unlink(missing_ok=True)
         raise
     finally:
         await file.close()
-
-    if total_size == 0:
-        upload_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="上传文件为空")
+        for companion_file in companion_files or []:
+            await companion_file.close()
 
     try:
         return await load_file_response(str(upload_path))
     except HTTPException:
-        upload_path.unlink(missing_ok=True)
+        for saved_path in saved_paths:
+            saved_path.unlink(missing_ok=True)
         raise
     except FileNotFoundError as e:
-        upload_path.unlink(missing_ok=True)
+        for saved_path in saved_paths:
+            saved_path.unlink(missing_ok=True)
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
-        upload_path.unlink(missing_ok=True)
+        for saved_path in saved_paths:
+            saved_path.unlink(missing_ok=True)
         traceback.print_exc()
-        raise HTTPException(status_code=400, detail=str(e))
+        message = str(e)
+        if suffix == ".set" and ".fdt" in message.lower():
+            message = "这个 SET 文件需要同名 .fdt 数据文件，请在上传时同时选择 .set 和 .fdt"
+        raise HTTPException(status_code=400, detail=message)
     except Exception as e:
-        upload_path.unlink(missing_ok=True)
+        for saved_path in saved_paths:
+            saved_path.unlink(missing_ok=True)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"加载失败: {str(e)}")
 

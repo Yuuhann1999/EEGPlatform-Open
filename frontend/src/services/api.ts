@@ -240,13 +240,16 @@ export const workspaceApi = {
   /**
    * 上传并加载数据文件
    */
-  async uploadData(file: File): Promise<{
+  async uploadData(file: File, companionFiles: File[] = []): Promise<{
     info: EEGDataInfo;
     events: EventInfo[];
     session_id: string;
   }> {
     const formData = new FormData();
     formData.append('file', file);
+    companionFiles.forEach((companionFile) => {
+      formData.append('companion_files', companionFile);
+    });
 
     const response = await fetch(`${API_BASE_URL}/workspace/upload`, {
       method: 'POST',

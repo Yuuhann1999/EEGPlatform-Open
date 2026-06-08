@@ -16,6 +16,7 @@ import { convertApiDataInfo, convertApiEvents } from '../../utils/apiMappers';
 
 const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
 const SUPPORTED_EEG_EXTENSIONS = ['.edf', '.bdf', '.gdf', '.set', '.fif'];
+const UPLOAD_ACCEPT_EXTENSIONS = [...SUPPORTED_EEG_EXTENSIONS, '.fdt'];
 
 function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) {
@@ -28,6 +29,14 @@ function getFileFormat(fileName: string): EEGFile['format'] {
   const ext = fileName.toLowerCase().split('.').pop();
   if (ext === 'set' || ext === 'fif') return ext;
   return 'edf';
+}
+
+function getFileSuffix(fileName: string) {
+  return `.${fileName.split('.').pop()?.toLowerCase() || ''}`;
+}
+
+function getFileStem(fileName: string) {
+  return fileName.replace(/\.[^/.]+$/, '').toLowerCase();
 }
 
 export function PreprocessingPage() {
@@ -81,17 +90,43 @@ export function PreprocessingPage() {
   } = useEEGStore();
 
   const handleUploadFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const selectedFiles = Array.from(event.target.files || []);
     event.target.value = '';
-    if (!file) return;
+    if (selectedFiles.length === 0) return;
 
-    const suffix = `.${file.name.split('.').pop()?.toLowerCase() || ''}`;
+    const eegFiles = selectedFiles.filter((selectedFile) =>
+      SUPPORTED_EEG_EXTENSIONS.includes(getFileSuffix(selectedFile.name))
+    );
+    if (eegFiles.length === 0) {
+      setError(`请选择 EEG 主文件。支持: ${SUPPORTED_EEG_EXTENSIONS.join(', ')}`);
+      return;
+    }
+
+    if (eegFiles.length > 1) {
+      setError('一次只能上传一个 EEG 主文件');
+      return;
+    }
+
+    const file = eegFiles[0];
+    const suffix = getFileSuffix(file.name);
     if (!SUPPORTED_EEG_EXTENSIONS.includes(suffix)) {
       setError(`不支持的文件格式。支持: ${SUPPORTED_EEG_EXTENSIONS.join(', ')}`);
       return;
     }
 
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    const companionFiles: File[] = [];
+    if (suffix === '.set') {
+      const setStem = getFileStem(file.name);
+      const fdtFile = selectedFiles.find((selectedFile) =>
+        getFileSuffix(selectedFile.name) === '.fdt' && getFileStem(selectedFile.name) === setStem
+      );
+      if (fdtFile) {
+        companionFiles.push(fdtFile);
+      }
+    }
+
+    const totalUploadSize = [file, ...companionFiles].reduce((sum, uploadFile) => sum + uploadFile.size, 0);
+    if (totalUploadSize > MAX_UPLOAD_SIZE_BYTES) {
       setError(`文件过大，最大允许 ${formatFileSize(MAX_UPLOAD_SIZE_BYTES)}`);
       return;
     }
@@ -101,7 +136,7 @@ export function PreprocessingPage() {
       name: file.name,
       path: file.name,
       format: getFileFormat(file.name),
-      size: file.size,
+      size: totalUploadSize,
       status: 'processing',
       modifiedAt: new Date(file.lastModified || Date.now()).toISOString(),
     };
@@ -117,7 +152,7 @@ export function PreprocessingPage() {
     isEpochModeRef.current = false;
 
     try {
-      const result = await workspaceApi.uploadData(file);
+      const result = await workspaceApi.uploadData(file, companionFiles);
       const loadedFile = {
         ...uploadedFile,
         id: result.session_id,
@@ -585,7 +620,8 @@ export function PreprocessingPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={SUPPORTED_EEG_EXTENSIONS.join(',')}
+                accept={UPLOAD_ACCEPT_EXTENSIONS.join(',')}
+                multiple
                 className="hidden"
                 onChange={handleUploadFile}
               />
@@ -600,7 +636,7 @@ export function PreprocessingPage() {
                 上传 EEG 文件
               </Button>
               <p className="text-xs text-eeg-text-muted leading-relaxed">
-                支持 EDF/BDF/GDF/SET/FIF，最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
+                支持 EDF/BDF/GDF/SET/FIF，SET 可同选 FDT，最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
               </p>
             </div>
             

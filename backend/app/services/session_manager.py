@@ -157,6 +157,8 @@ class SessionManager:
                 upload_dir = settings.UPLOAD_DIR.resolve()
                 if upload_dir in file_path.parents and file_path.exists():
                     file_path.unlink()
+                    if file_path.suffix.lower() == ".set":
+                        file_path.with_suffix(".fdt").unlink(missing_ok=True)
             except OSError:
                 pass
     
