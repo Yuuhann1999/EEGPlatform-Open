@@ -118,44 +118,7 @@ EEGPlatform/
 
 ## 打包发布
 
-将项目打包为单个可执行文件（无需安装 Python 或 Node.js）。
-
-### 前置要求
-
-- Python 3.9+
-- Node.js + npm
-- PyInstaller（`pip install pyinstaller`）
-
-### 快速打包
-
-```bash
-# Windows PowerShell
-.\build.ps1
-```
-
-脚本自动完成前端构建 + PyInstaller 打包。
-
-### 手动打包
-
-```bash
-# 1) 构建前端
-cd frontend
-npm install
-npm run build
-
-# 2) 打包
-cd ..
-pyinstaller EEGPlatform.spec --noconfirm
-```
-
-输出文件：`dist/EEGPlatform.exe`（约 200–500 MB），双击运行后访问 `http://127.0.0.1:8088`。
-
-### 常见问题
-
-- 前端构建失败 → 检查 Node.js ≥ 16，重新 `npm install`
-- PyInstaller 打包失败 → 确保 `pip install -r backend/requirements.txt` 全部装好
-- 打包后无法运行 → 确认 `frontend/dist/` 目录存在且完整
-- 清理重建 → 删除 `build/`、`dist/` 后重新打包
+参见 [docs/build.md](docs/build.md)。
 
 ## 开发说明
 
@@ -173,4 +136,5 @@ pyinstaller EEGPlatform.spec --noconfirm
 
 - [`LICENSE`](LICENSE)：开源协议（MIT）
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)：贡献指南
-- [`CHANGELOG.md`](CHANGELOG.md)：版本变更记录
+- [`docs/product.md`](docs/product.md)：产品设计文档
+- [`docs/build.md`](docs/build.md)：打包发布指南
