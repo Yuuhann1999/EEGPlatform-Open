@@ -3,7 +3,7 @@ services:
     name: eegplatform-api
     runtime: docker
     plan: free
-    branch: feature/upload-eeg-public
+    branch: main
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
