@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Checkbox from '@radix-ui/react-checkbox';
 import {
   ChevronDown,
@@ -15,6 +16,7 @@ import {
   Check,
   Loader2,
   Tag,
+  Info,
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui';
 import { useEEGStore } from '../../stores/eegStore';
@@ -83,6 +85,22 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
 
   const canUndo = currentStepIndex >= 0;
   const canRedo = currentStepIndex < pipelineSteps.length - 1;
+
+  // 验证：滤波
+  const lowcutVal = parseFloat(lowcut) || 0;
+  const highcutVal = parseFloat(highcut) || 0;
+  const filterError = lowcutVal > 0 && highcutVal > 0 && lowcutVal >= highcutVal
+    ? '高通频率不能大于等于低通频率'
+    : null;
+
+  // 验证：裁剪
+  const cropMinVal = parseFloat(cropMin);
+  const cropMaxVal = cropMax ? parseFloat(cropMax) : null;
+  const cropError = cropMinVal < 0
+    ? '起始时间不能为负数'
+    : cropMaxVal !== null && cropMaxVal <= cropMinVal
+    ? '结束时间必须大于起始时间'
+    : null;
 
   const handleApply = async (type: PipelineStepType, params: Record<string, unknown>) => {
     // 调用后端 API
@@ -175,7 +193,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
       <div className="flex-1 overflow-auto">
         <Accordion.Root type="single" collapsible className="p-2 space-y-1">
           {/* 数据裁剪 */}
-          <AccordionItem value="crop" icon={<Scissors size={16} />} title="数据裁剪">
+          <AccordionItem value="crop" icon={<Scissors size={16} />} title="数据裁剪" helpText="截取感兴趣的时间段，减少后续计算量。">
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <Input
@@ -184,6 +202,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   onChange={(e) => setCropMin(e.target.value)}
                   type="number"
                   placeholder="0"
+                  error={cropMinVal < 0 ? '不能为负数' : undefined}
                 />
                 <Input
                   label="结束 (s)"
@@ -191,12 +210,16 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   onChange={(e) => setCropMax(e.target.value)}
                   type="number"
                   placeholder="末尾"
+                  error={cropMaxVal !== null && cropMaxVal <= cropMinVal ? '需大于起始' : undefined}
                 />
               </div>
+              {cropError && (
+                <p className="text-xs text-eeg-error">{cropError}</p>
+              )}
               <Button
                 size="sm"
                 className="w-full"
-                disabled={isProcessing}
+                disabled={isProcessing || !!cropError}
                 onClick={() => handleApply('crop', {
                   tmin: parseFloat(cropMin) || 0,
                   tmax: cropMax ? parseFloat(cropMax) : null
@@ -209,7 +232,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 电极定位 */}
-          <AccordionItem value="channel" icon={<Radio size={16} />} title="电极定位">
+          <AccordionItem value="channel" icon={<Radio size={16} />} title="电极定位" helpText="将通道名映射到标准头皮位置，用于地形图和源定位。推荐 10-20 系统。">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-1.5">
@@ -240,7 +263,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 滤波 (独立) */}
-          <AccordionItem value="filter" icon={<Filter size={16} />} title="滤波">
+          <AccordionItem value="filter" icon={<Filter size={16} />} title="滤波" helpText="去除不需要的频率成分。典型设置：高通 0.1 Hz、低通 30-40 Hz、陷波 50 Hz（工频干扰）。">
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <Input
@@ -265,10 +288,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 type="number"
                 placeholder="50 (工频干扰)"
               />
+              {filterError && (
+                <p className="text-xs text-eeg-error">{filterError}</p>
+              )}
               <Button
                 size="sm"
                 className="w-full"
-                disabled={isProcessing}
+                disabled={isProcessing || !!filterError}
                 onClick={() => handleApply('filter', {
                   lowcut: lowcut ? parseFloat(lowcut) : null,
                   highcut: highcut ? parseFloat(highcut) : null,
@@ -282,7 +308,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 重采样 (独立) */}
-          <AccordionItem value="resample" icon={<Activity size={16} />} title="重采样">
+          <AccordionItem value="resample" icon={<Activity size={16} />} title="重采样" helpText="降低采样率以减少数据量。目标采样率应至少为信号最高频率的 2 倍（Nyquist 定理）。">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-1.5">
@@ -314,7 +340,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 全自动 ICA */}
-          <AccordionItem value="ica" icon={<Zap size={16} />} title="全自动 ICA">
+          <AccordionItem value="ica" icon={<Zap size={16} />} title="全自动 ICA" helpText="独立成分分析，自动识别并去除眼电、肌电等伪迹。阈值越高，去除越保守（保留更多成分）。">
             <div className="space-y-3">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-eeg-text-muted mb-2">
@@ -367,7 +393,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 重参考 */}
-          <AccordionItem value="reference" icon={<GitBranch size={16} />} title="重参考">
+          <AccordionItem value="reference" icon={<GitBranch size={16} />} title="重参考" helpText="重新选择参考电极。CAR（平均参考）是最常用的无假设参考方式，适用于大多数场景。">
             <div className="space-y-3">
               <select
                 value={reference}
@@ -401,7 +427,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 事件重命名 */}
-          <AccordionItem value="eventMapping" icon={<Tag size={16} />} title="事件重命名">
+          <AccordionItem value="eventMapping" icon={<Tag size={16} />} title="事件重命名" helpText={'为事件 ID 分配有意义的标签（如将事件 1 标记为「目标刺激」），方便后续分段和分析。'}>
             <div className="space-y-3">
               <div className="max-h-48 overflow-y-auto border border-eeg-border rounded-md bg-eeg-bg p-2 space-y-2">
                 {events.map(event => (
@@ -443,7 +469,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 分段 (多选事件) */}
-          <AccordionItem value="epoch" icon={<Layers size={16} />} title="分段">
+          <AccordionItem value="epoch" icon={<Layers size={16} />} title="分段" helpText="将连续数据按事件标记切分为等长片段（epochs）。典型设置：-0.2s 至 0.8s。坏段阈值推荐 80-150 µV。">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-2">
@@ -529,11 +555,13 @@ function AccordionItem({
   value,
   icon,
   title,
+  helpText,
   children
 }: {
   value: string;
   icon: React.ReactNode;
   title: string;
+  helpText?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -543,6 +571,7 @@ function AccordionItem({
           <div className="flex items-center gap-2">
             <span className="text-eeg-accent">{icon}</span>
             {title}
+            {helpText && <InfoTooltip text={helpText} />}
           </div>
           <ChevronDown
             size={16}
@@ -554,5 +583,33 @@ function AccordionItem({
         {children}
       </Accordion.Content>
     </Accordion.Item>
+  );
+}
+
+/** Info 图标 + Radix Tooltip，通过 portal 渲染不受父容器裁切 */
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <Tooltip.Provider delayDuration={200}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <span
+            className="inline-flex items-center text-eeg-text-muted hover:text-eeg-accent transition-colors cursor-help"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Info size={13} />
+          </span>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="bottom"
+            sideOffset={6}
+            className="z-[100] max-w-[280px] rounded-md bg-eeg-text px-3 py-2 text-xs text-eeg-bg leading-relaxed shadow-lg"
+          >
+            {text}
+            <Tooltip.Arrow className="fill-eeg-text" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
   );
 }

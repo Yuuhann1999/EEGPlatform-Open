@@ -1,16 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { Eye, EyeOff, Loader2, FileAudio, Clock, Radio, Activity, Download, Upload } from 'lucide-react';
+import { Eye, EyeOff, Loader2, FileAudio, Clock, Radio, Activity, Download, Upload, ChevronRight } from 'lucide-react';
 import { Alert, Button } from '../../components/ui';
 import { ExportDialog } from '../../components/ExportDialog';
 import { PipelineControls } from './PipelineControls';
 import { WaveformViewer } from './WaveformViewer';
-import { SidePanel } from './SidePanel';
 import { ThemeToggleButton } from '../../components/ThemeToggleButton';
 import { useEEGStore } from '../../stores/eegStore';
 import { ApiError, waveformApi, preprocessingApi, workspaceApi } from '../../services/api';
 import { generateMockWaveform } from '../../mock/eegData';
-import type { WaveformData, EEGFile } from '../../types/eeg';
+import type { WaveformData, EEGFile, PipelineStep } from '../../types/eeg';
 import { formatDuration } from '../../utils/format';
 import { convertApiDataInfo, convertApiEvents } from '../../utils/apiMappers';
 
@@ -560,6 +559,60 @@ export function PreprocessingPage() {
     setViewTimeRange([start, end]);
   }, [setViewTimeRange]);
 
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      // 在输入框、选择框、文本域中不触发快捷键
+      if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (mod && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      } else if (mod && e.key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const step = duration * 0.25;
+        const newStart = Math.max(0, viewTimeRange[0] - step);
+        setViewTimeRange([newStart, newStart + duration]);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const maxEnd = currentData?.duration ?? 100;
+        const step = duration * 0.25;
+        const newEnd = Math.min(maxEnd, viewTimeRange[1] + step);
+        setViewTimeRange([newEnd - duration, newEnd]);
+      } else if ((e.key === '+' || e.key === '=') && !mod) {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const center = (viewTimeRange[0] + viewTimeRange[1]) / 2;
+        const newDuration = Math.max(1, duration * 0.75);
+        setViewTimeRange([center - newDuration / 2, center + newDuration / 2]);
+      } else if (e.key === '-' && !mod) {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const center = (viewTimeRange[0] + viewTimeRange[1]) / 2;
+        const maxDur = currentData?.duration ?? 100;
+        const newDuration = Math.min(maxDur, duration * 1.33);
+        setViewTimeRange([
+          Math.max(0, center - newDuration / 2),
+          Math.min(maxDur, center + newDuration / 2),
+        ]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, viewTimeRange, setViewTimeRange, currentData?.duration]);
+
   return (
     <div className="h-full flex flex-col">
       {/* 顶部数据信息栏 - 浓缩显示 */}
@@ -599,8 +652,8 @@ export function PreprocessingPage() {
         
         <div className="ml-auto flex items-center gap-4">
           {!sessionId && (
-            <span className="text-xs text-eeg-warning">
-              请先选择并加载数据文件
+            <span className="text-sm text-eeg-warning font-medium">
+              请先上传 EEG 数据文件开始分析
             </span>
           )}
 
@@ -616,6 +669,9 @@ export function PreprocessingPage() {
           <ThemeToggleButton />
         </div>
       </div>
+
+      {/* Pipeline 面包屑条 - 始终显示已应用步骤 */}
+      <PipelineBreadcrumb />
 
       <div className="flex-1 flex min-h-0">
         {/* 左栏：文件浏览 + 操作流程 */}
@@ -767,9 +823,6 @@ export function PreprocessingPage() {
             />
           </div>
         </div>
-
-        {/* 右栏：辅助面板 */}
-        <SidePanel />
       </div>
 
       {/* 导出对话框 */}
@@ -782,4 +835,79 @@ export function PreprocessingPage() {
 
     </div>
   );
+}
+
+/** Pipeline 面包屑：始终可见的已应用步骤条 */
+function PipelineBreadcrumb() {
+  const { pipelineSteps, currentStepIndex } = useEEGStore();
+
+  const appliedSteps = pipelineSteps
+    .slice(0, currentStepIndex + 1)
+    .filter((s) => s.status === 'applied');
+
+  if (appliedSteps.length === 0) {
+    return (
+      <div className="flex-shrink-0 h-7 px-4 bg-eeg-surface/60 border-b border-eeg-border flex items-center">
+        <span className="text-xs text-eeg-text-muted">尚未应用预处理步骤</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-shrink-0 h-7 px-4 bg-eeg-surface/60 border-b border-eeg-border flex items-center gap-1 overflow-x-auto scrollbar-none">
+      <span className="text-xs text-eeg-text-muted mr-1 flex-shrink-0">Pipeline</span>
+      {appliedSteps.map((step, i) => (
+        <span key={step.id} className="flex items-center flex-shrink-0">
+          {i > 0 && <ChevronRight size={10} className="text-eeg-text-muted mx-0.5" />}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-eeg-active/10 text-eeg-active font-medium">
+            {getBreadcrumbLabel(step)}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function getBreadcrumbLabel(step: PipelineStep): string {
+  const p = step.params;
+  switch (step.type) {
+    case 'filter': {
+      const parts: string[] = [];
+      if (p.lowcut) parts.push(`HP ${p.lowcut}Hz`);
+      if (p.highcut) parts.push(`LP ${p.highcut}Hz`);
+      if (p.notch) parts.push(`Notch ${p.notch}Hz`);
+      return parts.length ? `滤波 ${parts.join(' ')}` : '滤波';
+    }
+    case 'ica': {
+      const result = p._result as Record<string, unknown> | undefined;
+      const n = (result?.excluded_ics as number[])?.length;
+      return n ? `ICA (${n} ICs)` : 'ICA';
+    }
+    case 'epoch': {
+      const result = p._result as Record<string, unknown> | undefined;
+      const n = result?.n_epochs as number | undefined;
+      return n !== undefined ? `分段 (${n} epochs)` : '分段';
+    }
+    case 'rereference':
+      return p.method === 'average' ? 'CAR' : '重参考';
+    case 'resample':
+      return `${p.sampleRate}Hz`;
+    case 'crop':
+      return `裁剪 ${p.tmin}s${p.tmax ? `-${p.tmax}s` : ''}`;
+    case 'montage':
+      return String(p.montageName);
+    case 'bad_channel':
+      return p.isBad ? `坏道 ${p.channelName}` : `恢复 ${p.channelName}`;
+    default:
+      return getStepTypeLabel(step.type);
+  }
+}
+
+function getStepTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    crop: '裁剪', resample: '重采样', filter: '滤波', rereference: '重参考',
+    ica: 'ICA', epoch: '分段', bad_channel: '坏道', drop_channel: '删通道',
+    montage: '定位', event_mapping: '事件映射',
+  };
+  return labels[type] || type;
 }

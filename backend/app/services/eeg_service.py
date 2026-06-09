@@ -973,7 +973,7 @@ class EEGService:
         
         ica = ICA(n_components=n_components, random_state=42, max_iter="auto")
         ica.fit(fit_raw)
-        
+
         # 使用 mne-icalabel 自动识别伪迹
         excluded_ics = []
         try:
@@ -982,87 +982,73 @@ class EEGService:
 
             from mne_icalabel import label_components
 
+            # ICLabel 需要 montage 信息来生成地形图特征
+            # 如果数据没有 montage，临时设置标准 10-20 用于特征提取
+            label_raw = fit_raw
+            temp_montage = False
+            if fit_raw.get_montage() is None:
+                try:
+                    montage = mne.channels.make_standard_montage('standard_1020')
+                    fit_raw.set_montage(montage, on_missing='ignore', verbose=False)
+                    temp_montage = True
+                    print("ICA: 临时设置 standard_1020 montage 用于 ICLabel 特征提取")
+                except Exception as e:
+                    print(f"ICA: 设置临时 montage 失败: {e}")
+
             labels = label_components(fit_raw, ica, method='iclabel')
-            
-            # 根据阈值和标签类型排除成分
-            # mne-icalabel 的标签映射
-            label_map = {
-                'eye blink': ['eye', 'eye blink'],
-                'muscle artifact': ['muscle', 'muscle artifact'],
-                'heart beat': ['heart', 'heart beat'],
-                'channel noise': ['channel noise', 'line noise']
-            }
-            
-            # 获取标签和概率数组
-            label_names = labels.get('labels', [])
-            y_pred_proba = labels.get('y_pred_proba', None)
-            
-            if y_pred_proba is None or len(label_names) == 0:
+
+            # mne-icalabel 0.8 返回:
+            #   y_pred_proba: shape (n_components,) — 每个成分的伪迹概率
+            #   labels: list of (n_components,) — 每个成分的标签字符串
+            ic_labels = labels.get('labels', [])
+            ic_proba = labels.get('y_pred_proba', None)
+
+            if ic_proba is None or len(ic_labels) == 0:
                 print("警告: label_components 返回的数据格式不正确")
                 raise ValueError("无法获取标签概率数据")
-            
-            # 转换为 numpy 数组并确保是 2D
-            y_pred_proba = np.asarray(y_pred_proba)
-            if y_pred_proba.ndim == 1:
-                # 如果只有一行，需要重新整形
-                y_pred_proba = y_pred_proba.reshape(1, -1)
-            
-            n_ics = y_pred_proba.shape[0]
-            n_labels = len(label_names)
-            
-            # 遍历每个 IC 成分
-            for ic_idx in range(n_ics):
-                # 获取该成分的所有标签概率
-                try:
-                    probs_row = y_pred_proba[ic_idx]
-                    
-                    # 确保 probs_row 是数组或可迭代对象
-                    if isinstance(probs_row, (int, float, np.integer, np.floating)):
-                        # 如果是标量，跳过（不应该发生）
-                        print(f"警告: IC {ic_idx} 的概率是标量，跳过")
-                        continue
-                    
-                    # 转换为数组
-                    probs_array = np.asarray(probs_row).flatten()
-                    
-                    # 遍历每个标签
-                    for label_idx, label_name in enumerate(label_names):
-                        if label_idx >= len(probs_array):
-                            break
-                        
-                        prob = float(probs_array[label_idx])
-                        
-                        # 检查是否需要排除此标签
-                        should_check = False
-                        if exclude_labels is None or len(exclude_labels) == 0:
-                            # 如果没有指定，检查所有伪迹类型
-                            should_check = True
-                        else:
-                            # 检查标签是否在排除列表中
-                            label_lower = label_name.lower()
-                            for exclude_label in exclude_labels:
-                                exclude_lower = exclude_label.lower()
-                                # 检查是否匹配（支持部分匹配）
-                                if (exclude_lower in label_lower or 
-                                    label_lower in exclude_lower):
-                                    should_check = True
-                                    break
-                        
-                        # 如果概率超过阈值，标记为排除
-                        if should_check and prob > threshold:
-                            if ic_idx not in excluded_ics:
-                                excluded_ics.append(ic_idx)
-                            break  # 一个成分只需要匹配一个标签即可
-                except Exception as e:
-                    print(f"处理 IC {ic_idx} 时出错: {e}")
-                    continue
-                            
+
+            ic_proba = np.asarray(ic_proba).flatten()
+
+            # 用户要排除的伪迹类型关键词
+            artifact_keywords = []
+            if exclude_labels:
+                for el in exclude_labels:
+                    artifact_keywords.extend(el.lower().split())
+            # 如果没指定，默认排除眼电和肌电
+            if not artifact_keywords:
+                artifact_keywords = ['eye', 'muscle', 'blink']
+
+            for ic_idx in range(min(len(ic_labels), len(ic_proba))):
+                label = str(ic_labels[ic_idx]).lower()
+                prob = float(ic_proba[ic_idx])
+
+                # 检查标签是否匹配用户要排除的类型
+                matched = any(kw in label for kw in artifact_keywords)
+
+                if matched and prob > threshold:
+                    excluded_ics.append(ic_idx)
+
+            print(f"ICLabel 识别完成: {len(excluded_ics)} 个成分被排除, "
+                  f"标签: {[ic_labels[i] for i in excluded_ics if i < len(ic_labels)]}")
+
         except ImportError:
-            # 如果没有 mne-icalabel 或当前部署禁用了它，使用简单的 EOG 相关方法
+            # 如果没有 mne-icalabel 或当前部署禁用了它，使用 EOG 相关方法
             print("mne-icalabel 不可用，使用 EOG 检测方法")
             try:
-                eog_indices, eog_scores = ica.find_bads_eog(raw, threshold=threshold)
+                # 没有专用 EOG 通道时，用 Fp1/Fp2 作为 EOG 参考
+                eog_ch_names = None
+                available = [ch.upper() for ch in raw.ch_names]
+                fp_candidates = ['FP1', 'Fp1', 'FP2', 'Fp2']
+                found_fps = [raw.ch_names[available.index(fp)] for fp in fp_candidates if fp in available]
+                if found_fps:
+                    eog_ch_names = found_fps
+                    print(f"ICA EOG 检测: 使用 {eog_ch_names} 作为 EOG 参考通道")
+
+                eog_indices, eog_scores = ica.find_bads_eog(
+                    raw, ch_name=eog_ch_names, threshold=threshold
+                )
                 excluded_ics = list(eog_indices) if eog_indices is not None else []
+                print(f"EOG 检测完成: {len(excluded_ics)} 个成分被排除")
             except Exception as e:
                 print(f"EOG 检测失败: {e}")
                 excluded_ics = []
@@ -1078,11 +1064,11 @@ class EEGService:
         
         session.add_history("ica", {
             "n_components": n_components,
-            "excluded_ics": excluded_ics,
+            "excluded_ics": [int(i) for i in excluded_ics],
             "threshold": threshold
         })
-        
-        return excluded_ics
+
+        return [int(i) for i in excluded_ics]
     
     @staticmethod
     def create_epochs(

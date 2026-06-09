@@ -2,19 +2,10 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Alert } from '../../components/ui';
 import { visualizationApi } from '../../services/api';
+import { resolveCssVar } from '../../utils/cssTheme';
 import type { TopoAnimationResponse } from '../../services/api';
 // @ts-ignore - gifshot 没有类型定义
 import gifshot from 'gifshot';
-
-function resolveCssVar(name: string): string {
-  const styles = getComputedStyle(document.documentElement);
-  const value = styles.getPropertyValue(name).trim();
-  if (value.startsWith('var(')) {
-    const inner = value.slice(4, -1).trim();
-    return styles.getPropertyValue(inner).trim();
-  }
-  return value;
-}
 
 function getTopoThemeColors() {
   return {

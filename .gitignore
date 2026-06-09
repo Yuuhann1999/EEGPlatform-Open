@@ -72,6 +72,9 @@ AGENTS.md
 UI 设计方案.md
 Solarized Light Comprehensive Design System
 
+# Tool caches
+.impeccable/
+
 # OS Generated
 .DS_Store
 Thumbs.db
