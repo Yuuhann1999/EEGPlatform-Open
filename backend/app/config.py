@@ -2,6 +2,7 @@
 import sys
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+from typing import Optional
 
 def get_cache_dir() -> Path:
     """
@@ -36,17 +37,27 @@ class Settings(BaseSettings):
         "http://localhost:8088",
         "http://127.0.0.1:8088",
     ]
+    CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
 
     # 缓存目录
     CACHE_DIR: Path = get_cache_dir()
+    UPLOAD_DIR: Path = CACHE_DIR / "uploads"
 
     # 数据处理配置
     DEFAULT_SAMPLE_RATE: int = 250
     WAVEFORM_CHUNK_DURATION: float = 10.0
     MAX_CHANNELS_DISPLAY: int = 64
     TFR_N_JOBS: int = 1
+    MAX_UPLOAD_SIZE_MB: int = 100
+    SUPPORTED_UPLOAD_EXTENSIONS: list[str] = [".edf", ".bdf", ".gdf", ".set", ".fif"]
+    MAX_UNDO_STACK: int = 10
+    ENABLE_ICLABEL: bool = True
+    ICA_FIT_MAX_SFREQ: float = 250.0
+    ICA_FIT_MAX_DURATION_SECONDS: Optional[float] = None
+    LOG_REQUESTS: bool = False
 
 settings = Settings()
 
 # 确保缓存目录存在
 settings.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

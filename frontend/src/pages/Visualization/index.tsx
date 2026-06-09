@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Camera } from 'lucide-react';
 import { Alert, Button, Card, CardTitle } from '../../components/ui';
@@ -9,8 +9,17 @@ import { ERPChart, PSDChart, TopoChart, TFRChart } from './Charts';
 import { TopoAnimationChart } from './TopoAnimationChart';
 import { useEEGStore } from '../../stores/eegStore';
 
+type ChartType = 'erp' | 'psd' | 'topo' | 'tfr';
+
+const DEFAULT_CENTRAL_ROI = ['C3', 'C4', 'Cz'];
+const CHART_TABS: { value: ChartType; label: string }[] = [
+  { value: 'erp', label: 'ERP' },
+  { value: 'psd', label: 'PSD' },
+  { value: 'topo', label: '地形图' },
+  { value: 'tfr', label: 'TFR' },
+];
+
 export function VisualizationPage() {
-  const DEFAULT_CENTRAL_ROI = ['C3', 'C4', 'Cz'];
   const {
     selectedROI,
     setSelectedROI,
@@ -48,9 +57,9 @@ export function VisualizationPage() {
 
   // 导出：由当前图表注册一个导出函数
   const exportFnRef = useRef<null | (() => void)>(null);
-  const registerExport = (fn: () => void) => {
+  const registerExport = useCallback((fn: () => void) => {
     exportFnRef.current = fn;
-  };
+  }, []);
 
   useEffect(() => {
     // 切换tab时避免导出旧的图
@@ -110,7 +119,7 @@ export function VisualizationPage() {
                   onChange={() => setDisplayMode('butterfly')}
                   className="w-4 h-4 text-eeg-active focus:ring-eeg-active"
                 />
-                <span className="text-sm text-eeg-text">多通道视图 </span>
+                <span className="text-sm text-eeg-text">多通道叠加</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -120,7 +129,7 @@ export function VisualizationPage() {
                   onChange={() => setDisplayMode('average')}
                   className="w-4 h-4 text-eeg-active focus:ring-eeg-active"
                 />
-                <span className="text-sm text-eeg-text">平均图</span>
+                <span className="text-sm text-eeg-text">ROI 平均</span>
               </label>
             </div>
           </Card>
@@ -130,15 +139,15 @@ export function VisualizationPage() {
         <Card>
           <CardTitle className="text-sm">图表参数</CardTitle>
           <div className="mt-3">
-            <Tabs.Root value={chartType} onValueChange={(v) => setChartType(v as any)}>
+            <Tabs.Root value={chartType} onValueChange={(v) => setChartType(v as ChartType)}>
               <Tabs.List className="flex border-b border-eeg-border mb-3">
-                {['erp', 'psd', 'topo', 'tfr'].map((type) => (
+                {CHART_TABS.map((tab) => (
                   <Tabs.Trigger
-                    key={type}
-                    value={type}
-                    className="flex-1 py-1.5 text-xs font-medium text-eeg-text-muted hover:text-eeg-text data-[state=active]:text-eeg-accent data-[state=active]:border-b-2 data-[state=active]:border-eeg-accent uppercase"
+                    key={tab.value}
+                    value={tab.value}
+                    className="flex-1 py-1.5 text-xs font-medium text-eeg-text-muted hover:text-eeg-text data-[state=active]:text-eeg-accent data-[state=active]:border-b-2 data-[state=active]:border-eeg-accent"
                   >
-                    {type}
+                    {tab.label}
                   </Tabs.Trigger>
                 ))}
               </Tabs.List>
@@ -282,7 +291,7 @@ export function VisualizationPage() {
               </Tabs.Content>
 
               <Tabs.Content value="tfr">
-                <p className="text-xs text-eeg-text-muted">参数设置在右侧面板</p>
+                <p className="text-xs text-eeg-text-muted">TFR 参数在图表面板中设置</p>
               </Tabs.Content>
             </Tabs.Root>
           </div>

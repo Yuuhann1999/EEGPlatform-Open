@@ -1,49 +1,11 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Loader2 } from 'lucide-react';
-import { Alert } from '../../components/ui';
+import { Loader2, ChevronDown } from 'lucide-react';
+import { Alert, Button } from '../../components/ui';
 import { visualizationApi } from '../../services/api';
 import { useEEGStore } from '../../stores/eegStore';
+import { getChartThemeColors } from '../../utils/cssTheme';
 import type { ERPData, PSDData, TopomapData, TFRJobResponse } from '../../services/api';
-
-function resolveCssVar(name: string): string {
-  const styles = getComputedStyle(document.documentElement);
-  const value = styles.getPropertyValue(name).trim();
-  if (value.startsWith('var(')) {
-    const inner = value.slice(4, -1).trim();
-    return styles.getPropertyValue(inner).trim();
-  }
-  return value;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const normalized = hex.replace('#', '');
-  if (normalized.length !== 6) return hex;
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function getChartThemeColors() {
-  const text = resolveCssVar('--color-eeg-text') || '#586e75';
-  const textMuted = resolveCssVar('--color-eeg-text-muted') || '#657b83';
-  const border = resolveCssVar('--color-eeg-border') || '#93a1a1';
-  const surface = resolveCssVar('--color-eeg-surface') || '#eee8d5';
-  const background = resolveCssVar('--color-eeg-bg') || '#fdf6e3';
-  const textDark = resolveCssVar('--color-base02') || '#073642';
-  const theme = document.documentElement.dataset.theme || 'solarized-light';
-  const gridAlpha = theme === 'one-dark' ? 0.35 : 0.2;
-  return {
-    text,
-    textMuted,
-    border,
-    surface,
-    background,
-    textDark,
-    gridLine: hexToRgba(border, gridAlpha),
-  };
-}
 
 // ============ ERP Chart ============
 
@@ -783,9 +745,6 @@ export function TopoChart({
             sessionId, undefined, freqBand, undefined,  // 功率地形图：不使用timePoint和timeWindow
             interpolation, contours, sensors, effectiveRenderMode
           );
-        console.log('[DEBUG] 功率地形图请求参数:', {
-          mode, freqBand, fmin: freqBand?.[0], fmax: freqBand?.[1], renderStyle, effectiveRenderMode
-        });
         setTopoData(data);
       } catch (err: any) {
         console.error('获取地形图数据失败:', err);
@@ -1253,23 +1212,24 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
       // 找到 0ms 的位置用于标记线
       const zeroTimeIdx = times.findIndex(t => t >= 0);
 
+      const tc = tfrThemeColors;
       return {
         backgroundColor: 'transparent',
-        title: title ? { text: title, left: 8, top: 6, textStyle: { color: '#586e75', fontSize: 11, fontWeight: 600 } } : undefined,
+        title: title ? { text: title, left: 8, top: 6, textStyle: { color: tc.text, fontSize: 11, fontWeight: 600 } } : undefined,
         grid: { left: 50, right: showVisualMap ? 45 : 12, top: title ? 26 : 16, bottom: 40 },
         tooltip: {
           trigger: 'item',
-          backgroundColor: '#eee8d5', // base2
-          borderColor: '#93a1a1', // base1
-          textStyle: { color: '#657b83' }, // base00
+          backgroundColor: tc.surface,
+          borderColor: tc.border,
+          textStyle: { color: tc.textMuted },
           formatter: (p: any) => {
             const ti = p.data[0];
             const fi = p.data[1];
             const v = p.data[2];
             const t = times[ti];
             const f = freqs[fi];
-            return `<div style="font-weight:600;color:#586e75;margin-bottom:4px;">${t.toFixed(0)} ms, ${f.toFixed(1)} Hz</div>` +
-              `<div style="color:#657b83;">Power: ${Number(v).toFixed(3)} ${powerUnit}</div>`;
+            return `<div style="font-weight:600;color:${tc.text};margin-bottom:4px;">${t.toFixed(0)} ms, ${f.toFixed(1)} Hz</div>` +
+              `<div style="color:${tc.textMuted};">Power: ${Number(v).toFixed(3)} ${powerUnit}</div>`;
           }
         },
         xAxis: {
@@ -1278,9 +1238,9 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
           name: 'Time (ms)',
           nameLocation: 'center',
           nameGap: 26,
-          nameTextStyle: { color: '#586e75', fontSize: 10 },
-          axisLine: { lineStyle: { color: '#93a1a1' } },
-          axisLabel: { color: '#586e75', fontSize: 9, interval: 'auto' },
+          nameTextStyle: { color: tc.text, fontSize: 10 },
+          axisLine: { lineStyle: { color: tc.border } },
+          axisLabel: { color: tc.text, fontSize: 9, interval: 'auto' },
           splitLine: { show: false },
         },
         yAxis: {
@@ -1289,23 +1249,23 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
           name: 'Frequency (Hz)',
           nameLocation: 'center',
           nameGap: 42,
-          nameTextStyle: { color: '#586e75', fontSize: 10 },
-          axisLine: { lineStyle: { color: '#93a1a1' } },
-          axisLabel: { color: '#586e75', fontSize: 9, interval: 'auto' },
+          nameTextStyle: { color: tc.text, fontSize: 10 },
+          axisLine: { lineStyle: { color: tc.border } },
+          axisLabel: { color: tc.text, fontSize: 9, interval: 'auto' },
           splitLine: { show: false },
         },
         visualMap: {
           min: symVmin,
           max: symVmax,
-          calculable: false,  // 不可拖动调整
-          show: showVisualMap,  // 只控制是否显示，但颜色映射始终生效
+          calculable: false,
+          show: showVisualMap,
           orient: 'vertical',
           right: 2,
           top: 'center',
-          itemWidth: 8,   // 更细
-          itemHeight: 80, // 更短
+          itemWidth: 8,
+          itemHeight: 80,
           text: showVisualMap ? [`${powerUnit}`, ''] : undefined,
-          textStyle: { color: '#586e75', fontSize: 8 },
+          textStyle: { color: tc.text, fontSize: 8 },
           textGap: 4,
           inRange: {
             // RdBu_r 科研配色（蓝 -> 白 -> 红）
@@ -1322,7 +1282,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
             type: 'heatmap',
             data,
             progressive: 1000,
-            emphasis: { itemStyle: { borderColor: '#586e75', borderWidth: 1 } },
+            emphasis: { itemStyle: { borderColor: tc.text, borderWidth: 1 } },
             // 添加 0ms 标记线
             markLine: zeroTimeIdx >= 0 ? {
               silent: true,
@@ -1404,6 +1364,8 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
     prevRenderStyleRef.current = renderStyle;
   }, [renderStyle]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
     <div className="h-full flex">
       {/* Left: controls */}
@@ -1446,40 +1408,54 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
             </div>
           </div>
 
-          {/* n_cycles & decim */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs text-eeg-text-muted mb-1">n_cycles</label>
-              <input type="number" value={nCycles} onChange={(e) => setNCycles(parseFloat(e.target.value) || 7)} step="0.5" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
-            </div>
-            <div>
-              <label className="block text-xs text-eeg-text-muted mb-1">decim</label>
-              <input type="number" value={decim} onChange={(e) => setDecim(parseInt(e.target.value) || 2)} step="1" min="1" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
-            </div>
-          </div>
-
-          {/* baseline */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs text-eeg-text-muted mb-1">baseline起 (s)</label>
-              <input type="number" value={baselineStart} onChange={(e) => setBaselineStart(parseFloat(e.target.value) || -0.2)} step="0.05" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
-            </div>
-            <div>
-              <label className="block text-xs text-eeg-text-muted mb-1">baseline止 (s)</label>
-              <input type="number" value={baselineEnd} onChange={(e) => setBaselineEnd(parseFloat(e.target.value) || 0)} step="0.05" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
-            </div>
-          </div>
-
-          {/* baseline mode */}
+          {/* n_cycles */}
           <div>
-            <label className="block text-xs text-eeg-text-muted mb-1">baseline mode</label>
-            <select value={baselineMode} onChange={(e) => setBaselineMode(e.target.value as any)} className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text">
-              <option value="logratio">logratio</option>
-              <option value="ratio">ratio</option>
-              <option value="zscore">zscore</option>
-              <option value="percent">percent</option>
-            </select>
+            <label className="block text-xs text-eeg-text-muted mb-1">n_cycles</label>
+            <input type="number" value={nCycles} onChange={(e) => setNCycles(parseFloat(e.target.value) || 7)} step="0.5" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
           </div>
+
+          {/* 高级设置 */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 text-xs text-eeg-accent hover:text-eeg-active transition-colors"
+          >
+            <ChevronDown size={12} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+            {showAdvanced ? '收起高级设置' : '高级设置'}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-3 pl-2 border-l-2 border-eeg-border">
+              {/* decim */}
+              <div>
+                <label className="block text-xs text-eeg-text-muted mb-1">decim</label>
+                <input type="number" value={decim} onChange={(e) => setDecim(parseInt(e.target.value) || 2)} step="1" min="1" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
+              </div>
+
+              {/* baseline 范围 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-eeg-text-muted mb-1">baseline起 (s)</label>
+                  <input type="number" value={baselineStart} onChange={(e) => setBaselineStart(parseFloat(e.target.value) || -0.2)} step="0.05" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
+                </div>
+                <div>
+                  <label className="block text-xs text-eeg-text-muted mb-1">baseline止 (s)</label>
+                  <input type="number" value={baselineEnd} onChange={(e) => setBaselineEnd(parseFloat(e.target.value) || 0)} step="0.05" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
+                </div>
+              </div>
+
+              {/* baseline mode */}
+              <div>
+                <label className="block text-xs text-eeg-text-muted mb-1">baseline mode</label>
+                <select value={baselineMode} onChange={(e) => setBaselineMode(e.target.value as typeof baselineMode)} className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text">
+                  <option value="logratio">logratio</option>
+                  <option value="ratio">ratio</option>
+                  <option value="zscore">zscore</option>
+                  <option value="percent">percent</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* 警告信息（统一提示样式） */}
           {nCyclesWarning && (
@@ -1496,21 +1472,23 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
             <Alert variant="error" title="计算失败" description={err} className="text-xs" />
           )}
 
-          <button
+          <Button
+            className="w-full"
             disabled={!canRun || submitting}
             onClick={submit}
-            className="w-full bg-eeg-active text-white rounded py-2 text-sm font-medium hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            isLoading={submitting}
           >
-            {submitting ? '提交中...' : '提交后台计算'}
-          </button>
+            提交后台计算
+          </Button>
 
           {job?.status === 'running' && (
-            <button
+            <Button
+              variant="danger"
+              className="w-full"
               onClick={cancel}
-              className="w-full bg-eeg-error text-white rounded py-2 text-sm font-medium hover:brightness-110 transition-colors"
             >
               取消任务
-            </button>
+            </Button>
           )}
 
           {job && (

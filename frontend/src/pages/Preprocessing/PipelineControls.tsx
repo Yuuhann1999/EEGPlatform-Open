@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Checkbox from '@radix-ui/react-checkbox';
 import {
   ChevronDown,
@@ -15,20 +16,20 @@ import {
   Check,
   Loader2,
   Tag,
-  Copy
+  Info,
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui';
 import { useEEGStore } from '../../stores/eegStore';
+import type { PipelineStepType } from '../../types/eeg';
 
 interface PipelineControlsProps {
   onAction?: (action: string, params: Record<string, unknown>) => Promise<boolean>;
-  onUndo?: () => Promise<void>;
-  onRedo?: () => Promise<void>;
+  onUndo?: () => Promise<boolean>;
+  onRedo?: () => Promise<boolean>;
   isProcessing?: boolean;
-  onOpenBatchProcessing?: () => void;
 }
 
-export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = false, onOpenBatchProcessing }: PipelineControlsProps) {
+export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = false }: PipelineControlsProps) {
   const {
     pipelineSteps,
     currentStepIndex,
@@ -77,7 +78,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
     if (events.length > 0 && selectedEpochEventIds.length === 0) {
       setSelectedEpochEventIds(events.map(e => e.id));
     }
-  }, [events]);
+  }, [events, selectedEpochEventIds.length]);
 
   // Montage 参数
   const [montageName, setMontageName] = useState('standard_1020');
@@ -85,7 +86,23 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
   const canUndo = currentStepIndex >= 0;
   const canRedo = currentStepIndex < pipelineSteps.length - 1;
 
-  const handleApply = async (type: string, params: Record<string, unknown>) => {
+  // 验证：滤波
+  const lowcutVal = parseFloat(lowcut) || 0;
+  const highcutVal = parseFloat(highcut) || 0;
+  const filterError = lowcutVal > 0 && highcutVal > 0 && lowcutVal >= highcutVal
+    ? '高通频率不能大于等于低通频率'
+    : null;
+
+  // 验证：裁剪
+  const cropMinVal = parseFloat(cropMin);
+  const cropMaxVal = cropMax ? parseFloat(cropMax) : null;
+  const cropError = cropMinVal < 0
+    ? '起始时间不能为负数'
+    : cropMaxVal !== null && cropMaxVal <= cropMinVal
+    ? '结束时间必须大于起始时间'
+    : null;
+
+  const handleApply = async (type: PipelineStepType, params: Record<string, unknown>) => {
     // 调用后端 API
     if (onAction) {
       const success = await onAction(type, params);
@@ -93,7 +110,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
         // 成功后记录到 pipeline
         addPipelineStep({
           id: `${type}-${Date.now()}`,
-          type: type as any,
+          type,
           params,
           timestamp: new Date().toISOString(),
           status: 'applied',
@@ -103,7 +120,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
       // 如果没有 onAction，仅添加到本地 store（演示模式）
       addPipelineStep({
         id: `${type}-${Date.now()}`,
-        type: type as any,
+        type,
         params,
         timestamp: new Date().toISOString(),
         status: 'applied',
@@ -146,10 +163,10 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           className="flex-1"
           disabled={!canUndo || isProcessing}
           onClick={async () => {
-            if (onUndo) {
-              await onUndo();
+            const didUndo = onUndo ? await onUndo() : true;
+            if (didUndo) {
+              undoPipelineStep();
             }
-            undoPipelineStep();
           }}
         >
           <Undo2 size={14} className="mr-1" />
@@ -161,10 +178,10 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           className="flex-1"
           disabled={!canRedo || isProcessing}
           onClick={async () => {
-            if (onRedo) {
-              await onRedo();
+            const didRedo = onRedo ? await onRedo() : true;
+            if (didRedo) {
+              redoPipelineStep();
             }
-            redoPipelineStep();
           }}
         >
           重做
@@ -176,7 +193,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
       <div className="flex-1 overflow-auto">
         <Accordion.Root type="single" collapsible className="p-2 space-y-1">
           {/* 数据裁剪 */}
-          <AccordionItem value="crop" icon={<Scissors size={16} />} title="数据裁剪">
+          <AccordionItem value="crop" icon={<Scissors size={16} />} title="数据裁剪" helpText="截取感兴趣的时间段，减少后续计算量。">
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <Input
@@ -185,6 +202,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   onChange={(e) => setCropMin(e.target.value)}
                   type="number"
                   placeholder="0"
+                  error={cropMinVal < 0 ? '不能为负数' : undefined}
                 />
                 <Input
                   label="结束 (s)"
@@ -192,25 +210,29 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                   onChange={(e) => setCropMax(e.target.value)}
                   type="number"
                   placeholder="末尾"
+                  error={cropMaxVal !== null && cropMaxVal <= cropMinVal ? '需大于起始' : undefined}
                 />
               </div>
+              {cropError && (
+                <p className="text-xs text-eeg-error">{cropError}</p>
+              )}
               <Button
                 size="sm"
                 className="w-full"
-                disabled={isProcessing}
+                disabled={isProcessing || !!cropError}
                 onClick={() => handleApply('crop', {
                   tmin: parseFloat(cropMin) || 0,
                   tmax: cropMax ? parseFloat(cropMax) : null
                 })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
-                应用
+                裁剪数据
               </Button>
             </div>
           </AccordionItem>
 
           {/* 电极定位 */}
-          <AccordionItem value="channel" icon={<Radio size={16} />} title="电极定位">
+          <AccordionItem value="channel" icon={<Radio size={16} />} title="电极定位" helpText="将通道名映射到标准头皮位置，用于地形图和源定位。推荐 10-20 系统。">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-1.5">
@@ -241,7 +263,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 滤波 (独立) */}
-          <AccordionItem value="filter" icon={<Filter size={16} />} title="滤波 (Filter)">
+          <AccordionItem value="filter" icon={<Filter size={16} />} title="滤波" helpText="去除不需要的频率成分。典型设置：高通 0.1 Hz、低通 30-40 Hz、陷波 50 Hz（工频干扰）。">
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <Input
@@ -266,10 +288,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 type="number"
                 placeholder="50 (工频干扰)"
               />
+              {filterError && (
+                <p className="text-xs text-eeg-error">{filterError}</p>
+              )}
               <Button
                 size="sm"
                 className="w-full"
-                disabled={isProcessing}
+                disabled={isProcessing || !!filterError}
                 onClick={() => handleApply('filter', {
                   lowcut: lowcut ? parseFloat(lowcut) : null,
                   highcut: highcut ? parseFloat(highcut) : null,
@@ -283,7 +308,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 重采样 (独立) */}
-          <AccordionItem value="resample" icon={<Activity size={16} />} title="重采样 (Resample)">
+          <AccordionItem value="resample" icon={<Activity size={16} />} title="重采样" helpText="降低采样率以减少数据量。目标采样率应至少为信号最高频率的 2 倍（Nyquist 定理）。">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-1.5">
@@ -315,17 +340,17 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
           </AccordionItem>
 
           {/* 全自动 ICA */}
-          <AccordionItem value="ica" icon={<Zap size={16} />} title="全自动 ICA">
+          <AccordionItem value="ica" icon={<Zap size={16} />} title="全自动 ICA" helpText="独立成分分析，自动识别并去除眼电、肌电等伪迹。阈值越高，去除越保守（保留更多成分）。">
             <div className="space-y-3">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-eeg-text-muted mb-2">
                   去除伪迹类别
                 </label>
                 {[
-                  { key: 'eyeBlink', label: 'Eye Blink (眼电)' },
-                  { key: 'muscle', label: 'Muscle (肌电)' },
-                  { key: 'heart', label: 'Heart (心电)' },
-                  { key: 'channelNoise', label: 'Channel Noise' },
+                  { key: 'eyeBlink', label: '眼电眨眼' },
+                  { key: 'muscle', label: '肌电伪迹' },
+                  { key: 'heart', label: '心电伪迹' },
+                  { key: 'channelNoise', label: '通道噪声' },
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -359,16 +384,16 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 onClick={() => handleApply('ica', { components: icaComponents, threshold: icaThreshold })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : <Zap size={14} className="mr-1" />}
-                运行自动 ICA
+                运行 ICA
               </Button>
               <p className="text-xs text-eeg-text-muted">
-                需要安装 mne-icalabel 库以获得最佳效果
+                公网环境使用轻量 ICA；完整 ICLabel 建议在本地或更高内存后端运行。
               </p>
             </div>
           </AccordionItem>
 
           {/* 重参考 */}
-          <AccordionItem value="reference" icon={<GitBranch size={16} />} title="重参考">
+          <AccordionItem value="reference" icon={<GitBranch size={16} />} title="重参考" helpText="重新选择参考电极。CAR（平均参考）是最常用的无假设参考方式，适用于大多数场景。">
             <div className="space-y-3">
               <select
                 value={reference}
@@ -396,13 +421,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 })}
               >
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
-                应用
+                应用重参考
               </Button>
             </div>
           </AccordionItem>
 
           {/* 事件重命名 */}
-          <AccordionItem value="eventMapping" icon={<Tag size={16} />} title="事件重命名">
+          <AccordionItem value="eventMapping" icon={<Tag size={16} />} title="事件重命名" helpText={'为事件 ID 分配有意义的标签（如将事件 1 标记为「目标刺激」），方便后续分段和分析。'}>
             <div className="space-y-3">
               <div className="max-h-48 overflow-y-auto border border-eeg-border rounded-md bg-eeg-bg p-2 space-y-2">
                 {events.map(event => (
@@ -438,13 +463,13 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 disabled={isProcessing || Object.keys(eventMappings).length === 0}
                 onClick={applyEventMappings}
               >
-                保存
+                保存事件标签
               </Button>
             </div>
           </AccordionItem>
 
           {/* 分段 (多选事件) */}
-          <AccordionItem value="epoch" icon={<Layers size={16} />} title="分段 (Epoching)">
+          <AccordionItem value="epoch" icon={<Layers size={16} />} title="分段" helpText="将连续数据按事件标记切分为等长片段（epochs）。典型设置：-0.2s 至 0.8s。坏段阈值推荐 80-150 µV。">
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-eeg-text mb-2">
@@ -520,57 +545,6 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
               </Button>
             </div>
           </AccordionItem>
-
-          {/* 批量预处理入口 */}
-          <div className="mt-4 pt-4 border-t border-eeg-border">
-            <div className="group relative overflow-hidden rounded-xl border border-eeg-border bg-eeg-surface hover:border-eeg-active/50 transition-all duration-300">
-              {/* 背景渐变效果 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-eeg-active/5 via-transparent to-eeg-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-
-              {/* 顶部强调条 */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-eeg-active via-eeg-accent to-eeg-active opacity-60" />
-
-              <div className="relative p-3">
-                <div className="flex items-start gap-3">
-                  {/* 左侧图标区域 */}
-                  <div className="flex-shrink-0">
-                    <div className="relative">
-                      <div className="w-10 h-10 rounded-lg bg-eeg-active/10 border border-eeg-active/20 flex items-center justify-center group-hover:scale-105 group-hover:bg-eeg-active/15 transition-all duration-300">
-                        <Copy size={20} className="text-eeg-accent" />
-                      </div>
-                      {/* 装饰性小点 */}
-                      <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-eeg-success border-2 border-eeg-surface" />
-                    </div>
-                  </div>
-
-                  {/* 中间内容区域 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="text-sm font-semibold text-eeg-text">
-                        批量预处理
-                      </h3>
-                    </div>
-                    <p className="text-xs text-eeg-text-muted leading-relaxed line-clamp-2">
-                      多文件统一流程，一键执行并导出结果
-                    </p>
-                  </div>
-                </div>
-
-                {/* 底部按钮区域 */}
-                <div className="mt-3 flex items-center gap-3">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="flex-1 group-hover:shadow-lg group-hover:shadow-eeg-active/20 transition-shadow duration-300"
-                    onClick={onOpenBatchProcessing}
-                  >
-                    <Copy size={16} className="mr-2" />
-                    开始批量处理
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
         </Accordion.Root>
       </div>
     </div>
@@ -581,11 +555,13 @@ function AccordionItem({
   value,
   icon,
   title,
+  helpText,
   children
 }: {
   value: string;
   icon: React.ReactNode;
   title: string;
+  helpText?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -595,6 +571,7 @@ function AccordionItem({
           <div className="flex items-center gap-2">
             <span className="text-eeg-accent">{icon}</span>
             {title}
+            {helpText && <InfoTooltip text={helpText} />}
           </div>
           <ChevronDown
             size={16}
@@ -606,5 +583,33 @@ function AccordionItem({
         {children}
       </Accordion.Content>
     </Accordion.Item>
+  );
+}
+
+/** Info 图标 + Radix Tooltip，通过 portal 渲染不受父容器裁切 */
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <Tooltip.Provider delayDuration={200}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>
+          <span
+            className="inline-flex items-center text-eeg-text-muted hover:text-eeg-accent transition-colors cursor-help"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Info size={13} />
+          </span>
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="bottom"
+            sideOffset={6}
+            className="z-[100] max-w-[280px] rounded-md bg-eeg-text px-3 py-2 text-xs text-eeg-bg leading-relaxed shadow-lg"
+          >
+            {text}
+            <Tooltip.Arrow className="fill-eeg-text" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
   );
 }

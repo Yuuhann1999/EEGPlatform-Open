@@ -2,10 +2,21 @@
  * API 服务层 - 封装与后端的所有通信
  */
 
-// 开发模式下 Vite proxy 将 /api 转发到 localhost:8088，生产模式同源访问
-export const API_BASE_URL = '/api';
+// 开发模式下 Vite proxy 将 /api 转发到 localhost:8088，生产模式可通过 VITE_API_BASE_URL 指向公网后端
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+export const API_BASE_URL = (configuredApiBaseUrl || '/api').replace(/\/$/, '');
 
 // ============ 通用请求方法 ============
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
 
 async function request<T>(
   endpoint: string,
@@ -17,20 +28,23 @@ async function request<T>(
     'Content-Type': 'application/json',
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error('请求未完成，后端可能正在重启、内存不足或网络连接中断');
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: '请求失败' }));
     const errorMessage = error.detail || error.message || `HTTP ${response.status}`;
-    const errorWithStatus = new Error(errorMessage);
-    (errorWithStatus as any).status = response.status;
-    throw errorWithStatus;
+    throw new ApiError(errorMessage, response.status);
   }
 
   return response.json();
@@ -233,6 +247,67 @@ export const workspaceApi = {
     return request('/workspace/load', {
       method: 'POST',
       body: JSON.stringify({ file_path: filePath }),
+    });
+  },
+
+  /**
+   * 上传并加载数据文件
+   */
+  async uploadData(file: File, companionFiles: File[] = [], onProgress?: (percent: number) => void): Promise<{
+    info: EEGDataInfo;
+    events: EventInfo[];
+    session_id: string;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    companionFiles.forEach((companionFile) => {
+      formData.append('companion_files', companionFile);
+    });
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}/workspace/upload`);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress?.(Math.min(percent, 99));
+      };
+
+      xhr.upload.onload = () => {
+        onProgress?.(100);
+      };
+
+      xhr.onload = () => {
+        let data: unknown = null;
+        try {
+          data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+        } catch {
+          data = null;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data as {
+            info: EEGDataInfo;
+            events: EventInfo[];
+            session_id: string;
+          });
+          return;
+        }
+
+        const errorData = data as { detail?: string; message?: string } | null;
+        reject(new ApiError(errorData?.detail || errorData?.message || `HTTP ${xhr.status}`, xhr.status));
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('上传请求未完成，后端可能正在重启、内存不足或网络连接中断'));
+      };
+
+      xhr.onabort = () => {
+        reject(new Error('上传请求已取消'));
+      };
+
+      xhr.send(formData);
     });
   },
 
@@ -611,104 +686,6 @@ export const visualizationApi = {
     return request(`/visualization/tfr/${jobId}/cancel`, {
       method: 'POST',
     });
-  },
-};
-
-// ============ 批量处理 API ============
-
-export interface PreprocessingStepConfig {
-  id: string;
-  type: 'montage' | 'filter' | 'resample' | 'rereference' | 'ica' | 'crop' | 'epoch' | 'bad_channel';
-  enabled: boolean;
-  params: Record<string, unknown>;
-}
-
-export interface BatchProcessingRequest {
-  file_paths: string[];
-  preprocessing_steps: PreprocessingStepConfig[];
-  output_dir: string;
-  output_format: 'fif' | 'set' | 'edf';
-  export_epochs: boolean;
-}
-
-export interface BatchFileResult {
-  file_path: string;
-  file_name: string;
-  status: 'success' | 'failed' | 'pending';
-  output_path?: string;
-  error?: string;
-  processing_time?: number;
-}
-
-export interface BatchJobStatus {
-  job_id: string;
-  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
-  total_files: number;
-  completed_files: number;
-  failed_files: number;
-  current_file: string | null;
-  current_step: string | null;
-  progress: number;
-  error_message: string | null;
-  results: BatchFileResult[];
-  created_at: string;
-  updated_at: string | null;
-}
-
-export interface BatchProcessingResponse {
-  job_id: string;
-  message: string;
-  total_files: number;
-}
-
-export const batchApi = {
-  /**
-   * 启动批量处理任务
-   */
-  async startBatch(batchRequest: BatchProcessingRequest): Promise<BatchProcessingResponse> {
-    return request('/batch/start', {
-      method: 'POST',
-      body: JSON.stringify(batchRequest),
-    });
-  },
-
-  /**
-   * 获取批量处理任务状态
-   */
-  async getBatchStatus(jobId: string): Promise<BatchJobStatus> {
-    return request(`/batch/status/${jobId}`);
-  },
-
-  /**
-   * 取消批量处理任务
-   */
-  async cancelBatch(jobId: string): Promise<{ message: string; job_id: string }> {
-    return request(`/batch/cancel/${jobId}`, {
-      method: 'POST',
-    });
-  },
-
-  /**
-   * 订阅批量处理进度 (SSE)
-   * 返回 EventSource 实例，前端需要自行管理连接
-   */
-  subscribeProgress(jobId: string, onProgress: (status: BatchJobStatus) => void, onError?: (error: Event) => void): EventSource {
-    const eventSource = new EventSource(`${API_BASE_URL}/batch/progress/${jobId}`);
-    
-    eventSource.onmessage = (event) => {
-      try {
-        const status: BatchJobStatus = JSON.parse(event.data);
-        onProgress(status);
-      } catch (e) {
-        console.error('解析进度数据失败:', e);
-      }
-    };
-    
-    if (onError) {
-      eventSource.onerror = onError;
-    }
-    
-    return eventSource;
   },
 };
 

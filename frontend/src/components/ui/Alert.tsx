@@ -37,12 +37,17 @@ export function Alert({
         variantStyles[variant],
         className
       )}
-      role="alert"
+      role={variant === 'error' ? 'alert' : 'status'}
+      aria-live={variant === 'error' ? 'assertive' : 'polite'}
     >
       <Icon size={16} className="mt-0.5 flex-shrink-0" />
       <div>
         <div className="font-medium">{title}</div>
-        {description ? <div className="text-xs text-eeg-text-muted mt-0.5">{description}</div> : null}
+        {description ? (
+          <div className={cn('text-xs mt-0.5', variant === 'error' ? 'text-eeg-error' : 'text-eeg-text-muted')}>
+            {description}
+          </div>
+        ) : null}
       </div>
     </div>
   );

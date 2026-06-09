@@ -6,7 +6,6 @@ import type {
   PipelineStep, 
   WaveformData,
   ROIPreset,
-  BatchJob
 } from '../types/eeg';
 
 interface EEGState {
@@ -39,9 +38,6 @@ interface EEGState {
   displayMode: 'butterfly' | 'average';
   chartType: 'erp' | 'psd' | 'topo' | 'tfr';
   
-  // 批处理状态
-  batchJob: BatchJob | null;
-
   // Actions
   setSessionId: (sessionId: string | null) => void;
   setLoading: (loading: boolean) => void;
@@ -63,7 +59,6 @@ interface EEGState {
   setDisplayMode: (mode: 'butterfly' | 'average') => void;
   setChartType: (type: 'erp' | 'psd' | 'topo' | 'tfr') => void;
   toggleBadChannel: (channelName: string) => void;
-  setBatchJob: (job: BatchJob | null) => void;
   resetSession: () => void;
   updateMontageStatus: (hasMontage: boolean) => void;
 }
@@ -93,7 +88,6 @@ export const useEEGStore = create<EEGState>((set) => ({
   ],
   displayMode: 'butterfly',
   chartType: 'erp',
-  batchJob: null,
 
   // Actions
   setSessionId: (sessionId) => set({ sessionId }),
@@ -189,8 +183,6 @@ export const useEEGStore = create<EEGState>((set) => ({
     };
   }),
   
-  setBatchJob: (job) => set({ batchJob: job }),
-  
   resetSession: () => set({
     sessionId: null,
     currentData: null,
@@ -203,7 +195,6 @@ export const useEEGStore = create<EEGState>((set) => ({
     selectedROI: [],
     displayMode: 'butterfly',
     chartType: 'erp',
-    batchJob: null,
     error: null,
   }),
 

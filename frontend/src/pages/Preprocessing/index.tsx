@@ -1,20 +1,55 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Eye, EyeOff, Loader2, FileAudio, Clock, Radio, Activity, FolderSearch, Search, FolderOpen, ChevronDown, ChevronRight, FileText, Circle, Download } from 'lucide-react';
-import { Alert, Button, Input } from '../../components/ui';
-import { FolderBrowser } from '../../components/FolderBrowser';
+import type { ChangeEvent } from 'react';
+import { Eye, EyeOff, Loader2, FileAudio, Clock, Radio, Activity, Download, Upload, ChevronRight } from 'lucide-react';
+import { Alert, Button } from '../../components/ui';
 import { ExportDialog } from '../../components/ExportDialog';
-import { BatchProcessingDialog, type BatchProcessingConfig, type BatchJobProgress } from '../../components/BatchProcessingDialog';
 import { PipelineControls } from './PipelineControls';
 import { WaveformViewer } from './WaveformViewer';
-import { SidePanel } from './SidePanel';
 import { ThemeToggleButton } from '../../components/ThemeToggleButton';
 import { useEEGStore } from '../../stores/eegStore';
-import { waveformApi, preprocessingApi, workspaceApi, batchApi, type BatchJobStatus } from '../../services/api';
-import { generateMockWaveform, mockFiles, mockDataInfo, mockEvents } from '../../mock/eegData';
-import type { WaveformData, EEGFile } from '../../types/eeg';
+import { ApiError, waveformApi, preprocessingApi, workspaceApi } from '../../services/api';
+import { generateMockWaveform } from '../../mock/eegData';
+import type { WaveformData, EEGFile, PipelineStep } from '../../types/eeg';
 import { formatDuration } from '../../utils/format';
-import { cn } from '../../utils/cn';
 import { convertApiDataInfo, convertApiEvents } from '../../utils/apiMappers';
+
+const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024;
+const SUPPORTED_EEG_EXTENSIONS = ['.edf', '.bdf', '.gdf', '.set', '.fif'];
+const UPLOAD_ACCEPT_EXTENSIONS = [...SUPPORTED_EEG_EXTENSIONS, '.fdt'];
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function getFileFormat(fileName: string): EEGFile['format'] {
+  const ext = fileName.toLowerCase().split('.').pop();
+  if (ext === 'set' || ext === 'fif') return ext;
+  return 'edf';
+}
+
+function getFileSuffix(fileName: string) {
+  return `.${fileName.split('.').pop()?.toLowerCase() || ''}`;
+}
+
+function getFileStem(fileName: string) {
+  return fileName.replace(/\.[^/.]+$/, '').toLowerCase();
+}
+
+function getErrorMessage(err: unknown) {
+  return err instanceof Error ? err.message : '未知错误';
+}
+
+function isSessionExpiredError(err: unknown) {
+  const message = getErrorMessage(err);
+  return (err instanceof ApiError && err.status === 404) ||
+    message.includes('会话不存在') ||
+    message.includes('404') ||
+    message.includes('Session') ||
+    message.includes('不存在');
+}
 
 export function PreprocessingPage() {
   const [showOverlay, setShowOverlay] = useState(false);
@@ -24,9 +59,10 @@ export function PreprocessingPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // 批量处理状态
-  const [showBatchDialog, setShowBatchDialog] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<BatchJobProgress | undefined>(undefined);
+  const [apiConnected, setApiConnected] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 自动清除成功消息
   useEffect(() => {
@@ -38,14 +74,6 @@ export function PreprocessingPage() {
     }
   }, [success]);
 
-  // 工作区状态
-  const [workspacePath, setWorkspacePath] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
-  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
-  const [useApi, setUseApi] = useState(true);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['root']));
-
-  
   // 使用ref跟踪epoch模式，避免依赖循环
   const isEpochModeRef = useRef(false);
   
@@ -71,75 +99,106 @@ export function PreprocessingPage() {
     setEvents,
     isLoading: _isLoading,
     setLoading,
+    resetSession,
   } = useEEGStore();
 
-  // 选择文件夹
-  const handleSelectFolder = async (path: string) => {
-    setWorkspacePath(path);
-    setIsBrowserOpen(false);
-    if (path.trim()) {
-      setIsScanning(true);
-      setError(null);
-      
-      try {
-        if (useApi) {
-          const result = await workspaceApi.scanDirectory(path);
-          const convertedFiles: EEGFile[] = result.files.map(f => ({
-            id: f.id,
-            name: f.name,
-            path: f.path,
-            format: f.format,
-            size: f.size,
-            status: f.status,
-            modifiedAt: f.modified_at,
-          }));
-          setFiles(convertedFiles);
-          
-          if (convertedFiles.length === 0) {
-            setError('未找到支持的 EEG 文件 (.edf, .set, .fif)');
-          }
-        } else {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          setFiles(mockFiles);
-        }
-      } catch (err: any) {
-        console.warn('API 调用失败，使用 Mock 数据:', err);
-        setError('无法连接到后端服务，已切换到演示模式');
-        setFiles(mockFiles);
-        setUseApi(false);
-      } finally {
-        setIsScanning(false);
+  const handleUploadFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (selectedFiles.length === 0) return;
+
+    const eegFiles = selectedFiles.filter((selectedFile) =>
+      SUPPORTED_EEG_EXTENSIONS.includes(getFileSuffix(selectedFile.name))
+    );
+    if (eegFiles.length === 0) {
+      setError(`请选择 EEG 主文件。支持: ${SUPPORTED_EEG_EXTENSIONS.join(', ')}`);
+      return;
+    }
+
+    if (eegFiles.length > 1) {
+      setError('一次只能上传一个 EEG 主文件');
+      return;
+    }
+
+    const file = eegFiles[0];
+    const suffix = getFileSuffix(file.name);
+    if (!SUPPORTED_EEG_EXTENSIONS.includes(suffix)) {
+      setError(`不支持的文件格式。支持: ${SUPPORTED_EEG_EXTENSIONS.join(', ')}`);
+      return;
+    }
+
+    const companionFiles: File[] = [];
+    if (suffix === '.set') {
+      const setStem = getFileStem(file.name);
+      const fdtFile = selectedFiles.find((selectedFile) =>
+        getFileSuffix(selectedFile.name) === '.fdt' && getFileStem(selectedFile.name) === setStem
+      );
+      if (fdtFile) {
+        companionFiles.push(fdtFile);
       }
     }
-  };
 
-  // 加载文件
-  const handleLoadFile = useCallback(async (file: EEGFile) => {
+    const totalUploadSize = [file, ...companionFiles].reduce((sum, uploadFile) => sum + uploadFile.size, 0);
+    if (totalUploadSize > MAX_UPLOAD_SIZE_BYTES) {
+      setError(`文件过大，最大允许 ${formatFileSize(MAX_UPLOAD_SIZE_BYTES)}`);
+      return;
+    }
+
+    const uploadedFile: EEGFile = {
+      id: `upload-${Date.now()}`,
+      name: file.name,
+      path: file.name,
+      format: getFileFormat(file.name),
+      size: totalUploadSize,
+      status: 'processing',
+      modifiedAt: new Date(file.lastModified || Date.now()).toISOString(),
+    };
+
+    resetSession();
+    setFiles([uploadedFile]);
+    selectFile(uploadedFile);
     setLoading(true);
+    setIsUploading(true);
+    setApiConnected(true);
+    setUploadProgress(0);
     setError(null);
-    selectFile(file);
-    
+    setSuccess(null);
+    isEpochModeRef.current = false;
+
     try {
-      if (useApi) {
-        const result = await workspaceApi.loadData(file.path);
-        setSessionId(result.session_id);
-        setCurrentData(convertApiDataInfo(result.info));
-        setEvents(convertApiEvents(result.events));
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        setCurrentData(mockDataInfo);
-        setEvents(mockEvents);
-      }
-    } catch (err: any) {
-      console.warn('加载数据失败:', err);
-      setError(`加载失败: ${err.message || '未知错误'}，已切换到演示模式`);
-      setCurrentData(mockDataInfo);
-      setEvents(mockEvents);
-      setUseApi(false);
+      const result = await workspaceApi.uploadData(file, companionFiles, setUploadProgress);
+      const loadedFile = {
+        ...uploadedFile,
+        id: result.session_id,
+        status: 'completed' as const,
+      };
+      setFiles([loadedFile]);
+      selectFile(loadedFile);
+      setSessionId(result.session_id);
+      setCurrentData(convertApiDataInfo(result.info));
+      setEvents(convertApiEvents(result.events));
+      setViewTimeRange([0, 10]);
+      setSuccess(`已加载 ${file.name}`);
+    } catch (err: unknown) {
+      console.warn('上传或加载数据失败:', err);
+      setApiConnected(false);
+      setFiles([{ ...uploadedFile, status: 'unprocessed' }]);
+      setError(`上传失败: ${getErrorMessage(err)}`);
     } finally {
       setLoading(false);
+      setIsUploading(false);
+      setUploadProgress(null);
     }
-  }, [useApi, setSessionId, setCurrentData, setEvents, setLoading, selectFile]);
+  }, [
+    resetSession,
+    setFiles,
+    selectFile,
+    setLoading,
+    setSessionId,
+    setCurrentData,
+    setEvents,
+    setViewTimeRange,
+  ]);
 
   // 从后端获取波形数据
   const fetchWaveform = useCallback(async (startTime: number = 0, duration: number = 10, forceEpochMode?: boolean) => {
@@ -178,20 +237,16 @@ export function PreprocessingPage() {
       
       isEpochModeRef.current = convertedData.isEpoch || false;
       setWaveformData(convertedData);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('获取波形数据失败:', err);
       
-      const isSessionError = (err as any)?.status === 404 || 
-                            (err.message && (err.message.includes('会话不存在') || err.message.includes('404') || err.message.includes('Session') || err.message.includes('不存在')));
-      
-      if (isSessionError) {
+      if (isSessionExpiredError(err)) {
         setError('会话已失效（可能因为后端重启），请返回工作区重新加载数据文件');
         setSessionId(null);
         setWaveformData(null);
       } else {
-        setError(`加载波形失败: ${err.message}`);
-        const data = generateMockWaveform(startTime, startTime + duration, 250);
-        setWaveformData(data);
+        setError(`加载波形失败: ${getErrorMessage(err)}`);
+        setWaveformData(null);
       }
     } finally {
       setIsLoadingWaveform(false);
@@ -251,10 +306,10 @@ export function PreprocessingPage() {
           lowpassFilter: result.info.lowpass_filter,
           badChannels: result.info.bad_channels,
           hasMontage: result.info.has_montage,
-          hasEpochs: (result.info as any).has_epochs ?? false,
-          epochEventIds: (result.info as any).epoch_event_ids ?? [],
-          epochTmin: (result.info as any).epoch_tmin ?? null,
-          epochTmax: (result.info as any).epoch_tmax ?? null,
+          hasEpochs: result.info.has_epochs ?? false,
+          epochEventIds: result.info.epoch_event_ids ?? [],
+          epochTmin: result.info.epoch_tmin ?? null,
+          epochTmax: result.info.epoch_tmax ?? null,
           channels: result.info.channels.map(ch => ({
             name: ch.name,
             type: ch.type,
@@ -263,12 +318,9 @@ export function PreprocessingPage() {
           })),
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('刷新数据信息失败:', err);
-      const isSessionError = (err as any)?.status === 404 || 
-                            (err.message && (err.message.includes('会话不存在') || err.message.includes('404') || err.message.includes('Session') || err.message.includes('不存在')));
-      
-      if (isSessionError) {
+      if (isSessionExpiredError(err)) {
         setError('会话已失效，请返回工作区重新加载数据文件');
         setSessionId(null);
       }
@@ -381,18 +433,16 @@ export function PreprocessingPage() {
           
           if (nEpochs === 0) {
             const suggestion = result.data?.suggestion || '建议降低reject阈值或检查数据质量';
-            setError(`⚠ ${result.message || '所有epochs都被剔除'}。${suggestion}`);
+            setError(`${result.message || '所有 epochs 都被剔除'}。${suggestion}`);
           } else {
             isEpochModeRef.current = true;
             setViewTimeRange([0, 10]);
             try {
               await fetchWaveform(0, 10, true);
-            } catch (waveformErr: any) {
+            } catch (waveformErr: unknown) {
               console.warn('刷新波形失败（不影响主操作）:', waveformErr);
-              const isSessionError = (waveformErr as any)?.status === 404 || 
-                                    (waveformErr.message && (waveformErr.message.includes('会话不存在') || waveformErr.message.includes('404') || waveformErr.message.includes('Session') || waveformErr.message.includes('不存在')));
-              if (isSessionError) {
-                setError('⚠ 操作成功，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
+              if (isSessionExpiredError(waveformErr)) {
+                setError('操作已完成，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
                 setSessionId(null);
               }
             }
@@ -402,12 +452,10 @@ export function PreprocessingPage() {
             // 如果已经处于 epoch 模式（分段后），后续操作（如重参考）也应刷新 epoch 波形
             const forceEpochMode = isEpochModeRef.current;
             await fetchWaveform(viewTimeRange[0], viewTimeRange[1] - viewTimeRange[0], forceEpochMode);
-          } catch (waveformErr: any) {
+          } catch (waveformErr: unknown) {
             console.warn('刷新波形失败（不影响主操作）:', waveformErr);
-            const isSessionError = (waveformErr as any)?.status === 404 || 
-                                  (waveformErr.message && (waveformErr.message.includes('会话不存在') || waveformErr.message.includes('404') || waveformErr.message.includes('Session') || waveformErr.message.includes('不存在')));
-            if (isSessionError) {
-              setError('⚠ 操作成功，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
+            if (isSessionExpiredError(waveformErr)) {
+              setError('操作已完成，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
               setSessionId(null);
             }
           }
@@ -416,12 +464,10 @@ export function PreprocessingPage() {
         if (['crop', 'resample', 'filter', 'ica', 'rereference', 'epoch', 'montage'].includes(action)) {
           try {
             await refreshDataInfo();
-          } catch (refreshErr: any) {
+          } catch (refreshErr: unknown) {
             console.warn('刷新数据信息失败（不影响主操作）:', refreshErr);
-            const isSessionError = (refreshErr as any)?.status === 404 || 
-                                  (refreshErr.message && (refreshErr.message.includes('会话不存在') || refreshErr.message.includes('404') || refreshErr.message.includes('Session') || refreshErr.message.includes('不存在')));
-            if (isSessionError) {
-              setError('⚠ 操作成功，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
+            if (isSessionExpiredError(refreshErr)) {
+              setError('操作已完成，但会话已失效（可能因为后端重启）。请返回工作区重新加载数据文件。');
               setSessionId(null);
             }
           }
@@ -432,26 +478,23 @@ export function PreprocessingPage() {
         setError(result.message || '操作失败');
         return false;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`预处理操作 ${action} 失败:`, err);
+      const errorMessage = getErrorMessage(err);
       
-      const isSessionError = err?.status === 404 || 
-                            (err.message && (err.message.includes('会话不存在') || err.message.includes('404') || err.message.includes('Session') || err.message.includes('不存在')));
-      
-      const isEpochError = err.message && (
-        err.message.includes('所有epochs都被剔除') || 
-        err.message.includes('epochs都被剔除') ||
-        err.message.includes('超出范围')
+      const isEpochError = (
+        errorMessage.includes('所有epochs都被剔除') ||
+        errorMessage.includes('epochs都被剔除') ||
+        errorMessage.includes('超出范围')
       );
       
-      if (isSessionError) {
+      if (isSessionExpiredError(err)) {
         setError('会话已失效，请重新加载数据文件');
         setSessionId(null);
       } else if (isEpochError && action === 'epoch') {
-        const errorMsg = err.message || '所有epochs都被剔除';
-        setError(`⚠ ${errorMsg}。建议：降低坏段阈值（例如提高到 50-100 µV）或检查数据质量。`);
+        setError(`${errorMessage}。建议：降低坏段阈值（例如提高到 50-100 µV）或检查数据质量。`);
       } else {
-        setError(`操作失败: ${err.message || '未知错误'}`);
+        setError(`操作失败: ${errorMessage}`);
       }
       return false;
     } finally {
@@ -459,8 +502,8 @@ export function PreprocessingPage() {
     }
   }, [sessionId, fetchWaveform, viewTimeRange, setSessionId]);
 
-  const handleUndo = useCallback(async () => {
-    if (!sessionId) return;
+  const handleUndo = useCallback(async (): Promise<boolean> => {
+    if (!sessionId) return false;
     
     setIsProcessing(true);
     setError(null);
@@ -473,19 +516,22 @@ export function PreprocessingPage() {
         isEpochModeRef.current = false;
         setViewTimeRange([0, 10]);
         await fetchWaveform(0, 10, false);
+        return true;
       } else {
         setError(result.message || '撤销失败');
+        return false;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('撤销失败:', err);
-      setError(`撤销失败: ${err.message}`);
+      setError(`撤销失败: ${getErrorMessage(err)}`);
+      return false;
     } finally {
       setIsProcessing(false);
     }
   }, [sessionId, fetchWaveform, refreshDataInfo, clearPreProcessingWaveform]);
 
-  const handleRedo = useCallback(async () => {
-    if (!sessionId) return;
+  const handleRedo = useCallback(async (): Promise<boolean> => {
+    if (!sessionId) return false;
     
     setIsProcessing(true);
     setError(null);
@@ -495,12 +541,15 @@ export function PreprocessingPage() {
       if (result.success) {
         await fetchWaveform(0, viewTimeRange[1] - viewTimeRange[0]);
         await refreshDataInfo();
+        return true;
       } else {
         setError(result.message || '重做失败');
+        return false;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('重做失败:', err);
-      setError(`重做失败: ${err.message}`);
+      setError(`重做失败: ${getErrorMessage(err)}`);
+      return false;
     } finally {
       setIsProcessing(false);
     }
@@ -510,116 +559,62 @@ export function PreprocessingPage() {
     setViewTimeRange([start, end]);
   }, [setViewTimeRange]);
 
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      if (next.has(folderId)) {
-        next.delete(folderId);
-      } else {
-        next.add(folderId);
+  // 键盘快捷键
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      // 在输入框、选择框、文本域中不触发快捷键
+      if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (mod && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      } else if (mod && e.key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const step = duration * 0.25;
+        const newStart = Math.max(0, viewTimeRange[0] - step);
+        setViewTimeRange([newStart, newStart + duration]);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const maxEnd = currentData?.duration ?? 100;
+        const step = duration * 0.25;
+        const newEnd = Math.min(maxEnd, viewTimeRange[1] + step);
+        setViewTimeRange([newEnd - duration, newEnd]);
+      } else if ((e.key === '+' || e.key === '=') && !mod) {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const center = (viewTimeRange[0] + viewTimeRange[1]) / 2;
+        const newDuration = Math.max(1, duration * 0.75);
+        setViewTimeRange([center - newDuration / 2, center + newDuration / 2]);
+      } else if (e.key === '-' && !mod) {
+        e.preventDefault();
+        const duration = viewTimeRange[1] - viewTimeRange[0];
+        const center = (viewTimeRange[0] + viewTimeRange[1]) / 2;
+        const maxDur = currentData?.duration ?? 100;
+        const newDuration = Math.min(maxDur, duration * 1.33);
+        setViewTimeRange([
+          Math.max(0, center - newDuration / 2),
+          Math.min(maxDur, center + newDuration / 2),
+        ]);
       }
-      return next;
-    });
-  };
+    };
 
-  const statusColors = {
-    unprocessed: 'text-eeg-text-muted',
-    processing: 'text-eeg-processing animate-pulse',
-    completed: 'text-eeg-success',
-  };
-
-  // 批量预处理处理函数
-  const handleStartBatchProcessing = async (config: BatchProcessingConfig) => {
-    console.log('开始批量预处理:', config);
-    
-    try {
-      // 调用后端 API 启动批量处理任务
-      const response = await batchApi.startBatch({
-        file_paths: config.selectedFiles,
-        preprocessing_steps: config.preprocessingSteps,
-        output_dir: config.outputDir,
-        output_format: config.outputFormat,
-        export_epochs: config.exportEpochs
-      });
-      
-      const jobId = response.job_id;
-      console.log('批量处理任务已启动, jobId:', jobId);
-      
-      // 初始化本地进度状态
-      const totalFiles = config.selectedFiles.length;
-      const initialProgress: BatchJobProgress = {
-        totalFiles,
-        completedFiles: 0,
-        failedFiles: 0,
-        currentFile: null,
-        currentStep: null,
-        progress: 0,
-        status: 'running',
-        errorMessage: null,
-        results: config.selectedFiles.map(path => ({
-          filePath: path,
-          fileName: path.split('/').pop() || path,
-          status: 'pending'
-        }))
-      };
-      setBatchProgress(initialProgress);
-      
-      // 使用 SSE 订阅实时进度
-      const eventSource = batchApi.subscribeProgress(
-        jobId,
-        (status: BatchJobStatus) => {
-          // 转换后端状态到前端格式
-          const progress: BatchJobProgress = {
-            totalFiles: status.total_files,
-            completedFiles: status.completed_files,
-            failedFiles: status.failed_files,
-            currentFile: status.current_file,
-            currentStep: status.current_step,
-            progress: status.progress,
-            status: status.status,
-            errorMessage: status.error_message,
-            results: status.results.map(r => ({
-              filePath: r.file_path,
-              fileName: r.file_name,
-              status: r.status,
-              outputPath: r.output_path,
-              error: r.error,
-              processingTime: r.processing_time
-            }))
-          };
-          setBatchProgress(progress);
-          
-          // 如果任务完成，关闭 EventSource
-          if (['completed', 'failed', 'cancelled'].includes(status.status)) {
-            eventSource.close();
-            if (status.status === 'completed') {
-              setSuccess(`批量处理完成！成功: ${status.completed_files} 个文件${status.failed_files > 0 ? `, 失败: ${status.failed_files} 个文件` : ''}`);
-            } else if (status.status === 'failed') {
-              setError(`批量处理失败: ${status.error_message || '未知错误'}`);
-            }
-          }
-        },
-        (error) => {
-          console.error('SSE 连接错误:', error);
-          eventSource.close();
-        }
-      );
-      
-    } catch (error) {
-      console.error('启动批量处理失败:', error);
-      setError(`启动批量处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    }
-  };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, viewTimeRange, setViewTimeRange, currentData?.duration]);
 
   return (
     <div className="h-full flex flex-col">
-      {/* 文件夹浏览对话框 */}
-      <FolderBrowser
-        isOpen={isBrowserOpen}
-        onClose={() => setIsBrowserOpen(false)}
-        onSelect={handleSelectFolder}
-      />
-
       {/* 顶部数据信息栏 - 浓缩显示 */}
       <div className="flex-shrink-0 h-10 px-4 bg-eeg-surface border-b border-eeg-border flex items-center gap-6">
         <div className="flex items-center gap-2 text-sm">
@@ -657,16 +652,16 @@ export function PreprocessingPage() {
         
         <div className="ml-auto flex items-center gap-4">
           {!sessionId && (
-            <span className="text-xs text-eeg-warning">
-              请先选择并加载数据文件
+            <span className="text-sm text-eeg-warning font-medium">
+              请先上传 EEG 数据文件开始分析
             </span>
           )}
 
           {/* API状态 */}
           <div className="flex items-center gap-2 text-xs">
-            <div className={`w-2 h-2 rounded-full ${useApi ? 'bg-eeg-success' : 'bg-eeg-warning'}`} />
+            <div className={`w-2 h-2 rounded-full ${apiConnected ? 'bg-eeg-success' : 'bg-eeg-warning'}`} />
             <span className="text-eeg-text-muted">
-              {useApi ? '后端已连接' : '演示模式'}
+              {apiConnected ? '后端已连接' : '后端连接异常'}
             </span>
           </div>
 
@@ -675,81 +670,69 @@ export function PreprocessingPage() {
         </div>
       </div>
 
+      {/* Pipeline 面包屑条 - 始终显示已应用步骤 */}
+      <PipelineBreadcrumb />
+
       <div className="flex-1 flex min-h-0">
         {/* 左栏：文件浏览 + 操作流程 */}
         <div className="w-64 flex-shrink-0 flex flex-col border-r border-eeg-border">
           {/* 文件选择区域 - 可折叠 */}
           <div className="flex-shrink-0 border-b border-eeg-border">
-            {/* 路径输入 */}
             <div className="p-2 space-y-2">
-              <div className="flex gap-1">
-                <Input
-                  value={workspacePath}
-                  onChange={(e) => setWorkspacePath(e.target.value)}
-                  placeholder="输入或选择文件夹路径"
-                  leftIcon={<FolderSearch size={14} />}
-                  className="text-xs"
-                />
-                <Button 
-                  variant="secondary" 
-                  size="sm"
-                  onClick={() => setIsBrowserOpen(true)}
-                  title="浏览"
-                  className="px-2"
-                >
-                  <FolderOpen size={14} />
-                </Button>
-              </div>
-              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={UPLOAD_ACCEPT_EXTENSIONS.join(',')}
+                multiple
+                className="hidden"
+                onChange={handleUploadFile}
+              />
               <Button 
                 className="w-full" 
                 size="sm"
-                onClick={() => handleSelectFolder(workspacePath)}
-                isLoading={isScanning}
-                disabled={!workspacePath.trim()}
+                onClick={() => fileInputRef.current?.click()}
+                isLoading={isUploading}
+                disabled={isUploading || _isLoading}
               >
-                <Search size={14} className="mr-1" />
-                扫描
+                <Upload size={14} className="mr-1" />
+                {isUploading && uploadProgress !== null ? `上传中 ${uploadProgress}%` : '上传 EEG 文件'}
               </Button>
+              {isUploading && uploadProgress !== null && (
+                <div className="space-y-1" role="status" aria-live="polite">
+                  <div className="h-1.5 rounded-full bg-eeg-bg border border-eeg-border overflow-hidden">
+                    <div
+                      className="h-full bg-eeg-active transition-[width] duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-eeg-text-muted">
+                    {uploadProgress < 100 ? `正在上传 ${uploadProgress}%` : '上传完成，正在解析 EEG 数据'}
+                  </p>
+                </div>
+              )}
+              <p className="text-xs text-eeg-text-muted leading-relaxed">
+                支持 EDF/BDF/GDF/SET/FIF；SET 请选择同名 FDT；最大 {formatFileSize(MAX_UPLOAD_SIZE_BYTES)}
+              </p>
             </div>
             
-            {/* 文件树 - 紧凑显示 */}
             {files.length > 0 && (
               <div className="max-h-48 overflow-auto px-2 pb-2">
-                <div
-                  className="flex items-center gap-1 px-1 py-1 cursor-pointer hover:bg-eeg-hover rounded text-xs"
-                  onClick={() => toggleFolder('root')}
-                >
-                  {expandedFolders.has('root') ? (
-                    <ChevronDown size={12} className="text-eeg-text-muted" />
-                  ) : (
-                    <ChevronRight size={12} className="text-eeg-text-muted" />
-                  )}
-                  <span className="text-eeg-text font-medium">文件 ({files.length})</span>
-                </div>
-                
-                {expandedFolders.has('root') && (
-                  <div className="ml-3 space-y-0.5">
-                    {files.map((file) => (
-                      <div
-                        key={file.id}
-                        className={cn(
-                          'flex items-center gap-1 px-1 py-1 rounded cursor-pointer transition-colors text-xs',
-                          selectedFile?.id === file.id
-                            ? 'bg-eeg-active/20 text-eeg-accent'
-                            : 'hover:bg-eeg-hover'
-                        )}
-                        onClick={() => selectFile(file)}
-                        onDoubleClick={() => handleLoadFile(file)}
-                        title="双击加载"
-                      >
-                        <FileText size={12} className="text-eeg-accent flex-shrink-0" />
-                        <span className="text-eeg-text truncate flex-1">{file.name}</span>
-                        <Circle size={6} className={cn('fill-current flex-shrink-0', statusColors[file.status])} />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {files.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    className="w-full flex items-start gap-2 px-2 py-2 rounded border border-eeg-border bg-eeg-bg text-left"
+                    onClick={() => selectFile(file)}
+                  >
+                    <FileAudio size={14} className="text-eeg-accent flex-shrink-0 mt-0.5" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs text-eeg-text truncate">{file.name}</span>
+                      <span className="block text-[11px] text-eeg-text-muted">
+                        {formatFileSize(file.size)} · {file.status === 'completed' ? '已加载' : file.status === 'processing' ? '上传中' : '未加载'}
+                      </span>
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -761,7 +744,6 @@ export function PreprocessingPage() {
               onUndo={handleUndo}
               onRedo={handleRedo}
               isProcessing={isProcessing}
-              onOpenBatchProcessing={() => setShowBatchDialog(true)}
             />
           </div>
         </div>
@@ -818,14 +800,14 @@ export function PreprocessingPage() {
           {/* 错误提示 */}
           {error && (
             <div className="mx-4 mt-2">
-              <Alert variant="error" title="错误" description={error} />
+              <Alert variant="error" title="操作未完成" description={error} />
             </div>
           )}
 
           {/* 成功提示 */}
           {success && (
             <div className="mx-4 mt-2">
-              <Alert variant="success" title="成功" description={success} />
+              <Alert variant="success" title="数据已加载" description={success} />
             </div>
           )}
 
@@ -841,9 +823,6 @@ export function PreprocessingPage() {
             />
           </div>
         </div>
-
-        {/* 右栏：辅助面板 */}
-        <SidePanel />
       </div>
 
       {/* 导出对话框 */}
@@ -854,20 +833,81 @@ export function PreprocessingPage() {
         hasEpochs={currentData?.hasEpochs ?? false}
       />
 
-      {/* 批量预处理对话框 */}
-      <BatchProcessingDialog
-        isOpen={showBatchDialog}
-        onClose={() => {
-          setShowBatchDialog(false);
-        }}
-        onReset={() => {
-          setBatchProgress(undefined);
-        }}
-        files={files}
-        workspacePath={workspacePath}
-        onStartBatch={handleStartBatchProcessing}
-        batchProgress={batchProgress}
-      />
     </div>
   );
+}
+
+/** Pipeline 面包屑：始终可见的已应用步骤条 */
+function PipelineBreadcrumb() {
+  const { pipelineSteps, currentStepIndex } = useEEGStore();
+
+  const appliedSteps = pipelineSteps
+    .slice(0, currentStepIndex + 1)
+    .filter((s) => s.status === 'applied');
+
+  if (appliedSteps.length === 0) {
+    return (
+      <div className="flex-shrink-0 h-7 px-4 bg-eeg-surface/60 border-b border-eeg-border flex items-center">
+        <span className="text-xs text-eeg-text-muted">尚未应用预处理步骤</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-shrink-0 h-7 px-4 bg-eeg-surface/60 border-b border-eeg-border flex items-center gap-1 overflow-x-auto scrollbar-none">
+      <span className="text-xs text-eeg-text-muted mr-1 flex-shrink-0">Pipeline</span>
+      {appliedSteps.map((step, i) => (
+        <span key={step.id} className="flex items-center flex-shrink-0">
+          {i > 0 && <ChevronRight size={10} className="text-eeg-text-muted mx-0.5" />}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-eeg-active/10 text-eeg-active font-medium">
+            {getBreadcrumbLabel(step)}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function getBreadcrumbLabel(step: PipelineStep): string {
+  const p = step.params;
+  switch (step.type) {
+    case 'filter': {
+      const parts: string[] = [];
+      if (p.lowcut) parts.push(`HP ${p.lowcut}Hz`);
+      if (p.highcut) parts.push(`LP ${p.highcut}Hz`);
+      if (p.notch) parts.push(`Notch ${p.notch}Hz`);
+      return parts.length ? `滤波 ${parts.join(' ')}` : '滤波';
+    }
+    case 'ica': {
+      const result = p._result as Record<string, unknown> | undefined;
+      const n = (result?.excluded_ics as number[])?.length;
+      return n ? `ICA (${n} ICs)` : 'ICA';
+    }
+    case 'epoch': {
+      const result = p._result as Record<string, unknown> | undefined;
+      const n = result?.n_epochs as number | undefined;
+      return n !== undefined ? `分段 (${n} epochs)` : '分段';
+    }
+    case 'rereference':
+      return p.method === 'average' ? 'CAR' : '重参考';
+    case 'resample':
+      return `${p.sampleRate}Hz`;
+    case 'crop':
+      return `裁剪 ${p.tmin}s${p.tmax ? `-${p.tmax}s` : ''}`;
+    case 'montage':
+      return String(p.montageName);
+    case 'bad_channel':
+      return p.isBad ? `坏道 ${p.channelName}` : `恢复 ${p.channelName}`;
+    default:
+      return getStepTypeLabel(step.type);
+  }
+}
+
+function getStepTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    crop: '裁剪', resample: '重采样', filter: '滤波', rereference: '重参考',
+    ica: 'ICA', epoch: '分段', bad_channel: '坏道', drop_channel: '删通道',
+    montage: '定位', event_mapping: '事件映射',
+  };
+  return labels[type] || type;
 }

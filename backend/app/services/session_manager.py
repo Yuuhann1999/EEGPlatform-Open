@@ -1,10 +1,11 @@
 """会话管理器 - 管理加载的 EEG 数据会话"""
 import uuid
+from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta
 import mne
 
-MAX_UNDO_STACK = 10  # 最大撤销步数
+from ..config import settings
 
 class EEGSession:
     """单个 EEG 数据会话"""
@@ -27,6 +28,11 @@ class EEGSession:
     
     def save_state(self, operation: str, params: dict):
         """保存当前状态到撤销栈（在执行操作前调用）"""
+        if settings.MAX_UNDO_STACK <= 0:
+            self._undo_stack.clear()
+            self._redo_stack.clear()
+            return
+
         if self.raw is not None:
             # 复制 raw 对象
             raw_copy = self.raw.copy()
@@ -38,7 +44,7 @@ class EEGSession:
                 "timestamp": datetime.now().isoformat()
             }, epochs_ref))
             # 限制栈大小
-            if len(self._undo_stack) > MAX_UNDO_STACK:
+            if len(self._undo_stack) > settings.MAX_UNDO_STACK:
                 self._undo_stack.pop(0)
             # 清空重做栈
             self._redo_stack.clear()
@@ -148,8 +154,18 @@ class SessionManager:
     
     def remove_session(self, session_id: str):
         """移除会话"""
-        if session_id in self._sessions:
-            del self._sessions[session_id]
+        session = self._sessions.pop(session_id, None)
+        if session:
+            try:
+                from ..config import settings
+                file_path = Path(session.file_path).resolve()
+                upload_dir = settings.UPLOAD_DIR.resolve()
+                if upload_dir in file_path.parents and file_path.exists():
+                    file_path.unlink()
+                    if file_path.suffix.lower() == ".set":
+                        file_path.with_suffix(".fdt").unlink(missing_ok=True)
+            except OSError:
+                pass
     
     def cleanup_expired(self):
         """清理过期会话"""
@@ -167,4 +183,3 @@ class SessionManager:
 
 # 全局单例
 session_manager = SessionManager()
-

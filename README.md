@@ -116,6 +116,10 @@ EEGPlatform/
 └── README.md
 ```
 
+## 打包发布
+
+参见 [docs/build.md](docs/build.md)。
+
 ## 开发说明
 
 - 后端开发模式下支持自动重载。
@@ -132,4 +136,5 @@ EEGPlatform/
 
 - [`LICENSE`](LICENSE)：开源协议（MIT）
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)：贡献指南
-- [`CHANGELOG.md`](CHANGELOG.md)：版本变更记录
+- [`docs/product.md`](docs/product.md)：产品设计文档
+- [`docs/build.md`](docs/build.md)：打包发布指南

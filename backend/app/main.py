@@ -1,6 +1,7 @@
 """FastAPI 主应用"""
 import sys
 import io
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,12 +11,13 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from fastapi import FastAPI, HTTPException
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from .config import settings
-from .api import workspace, waveform, preprocessing, visualization, filesystem, export, batch
+from .api import workspace, waveform, preprocessing, visualization, export
 
 # 判断是否为打包环境
 def get_base_path():
@@ -50,10 +52,30 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.middleware("http")
+async def request_log_middleware(request: Request, call_next):
+    """按需记录请求开始和结束，用于定位 Render 上的中途崩溃。"""
+    if not settings.LOG_REQUESTS:
+        return await call_next(request)
+
+    start = time.perf_counter()
+    print(f"[REQ] start {request.method} {request.url.path}", flush=True)
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        print(f"[REQ] error {request.method} {request.url.path} {elapsed_ms:.0f}ms {type(e).__name__}: {e}", flush=True)
+        raise
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    print(f"[REQ] done {request.method} {request.url.path} {response.status_code} {elapsed_ms:.0f}ms", flush=True)
+    return response
+
 # 配置 CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,9 +86,12 @@ app.include_router(workspace.router, prefix="/api")
 app.include_router(waveform.router, prefix="/api")
 app.include_router(preprocessing.router, prefix="/api")
 app.include_router(visualization.router, prefix="/api")
-app.include_router(filesystem.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
-app.include_router(batch.router, prefix="/api/batch")
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "healthy"}
 
 # 挂载前端静态文件（如果存在）
 if FRONTEND_DIST.exists():
@@ -110,8 +135,3 @@ else:
             "docs": "/docs",
             "note": "Frontend not bundled. Run frontend dev server separately."
         }
-
-@app.get("/health")
-async def health_check():
-    """健康检查"""
-    return {"status": "healthy"}
