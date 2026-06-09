@@ -83,8 +83,9 @@ Batch processing uses Server-Sent Events: `GET /api/batch/progress/{job_id}`.
 - **`stores/eegStore.ts`** — single Zustand store holding all app state: session ID, file list, waveform data, pipeline steps, visualization config
 - **`services/api.ts`** — all HTTP calls organized as `filesystemApi`, `workspaceApi`, `waveformApi`, `preprocessingApi`, `visualizationApi`, `exportApi`, `batchApi`. In dev mode (`port === '5173'`), points to `http://localhost:8088/api`; in production (bundled), uses same origin
 - **`types/eeg.ts`** — shared TypeScript type definitions (camelCase on frontend, snake_case in API — mapped by `utils/apiMappers.ts`)
-- **`pages/`** — three routes: `/` (Preprocessing + Workspace combined), `/visualization`, `/export`
+- **`pages/`** — three routes: `/` (Preprocessing + Workspace combined), `/visualization`, `/export`. Preprocessing page includes `PipelineBreadcrumb` (applied steps bar) and keyboard shortcuts (Cmd+Z/Y undo/redo, ←→ time pan, ± zoom)
 - **`components/ui/`** — primitive UI components (Button, Card, Input, Alert)
+- **`utils/cssTheme.ts`** — shared CSS variable resolution and chart theme colors, used by Charts and TopoAnimationChart
 
 ### Supported EEG formats
 `.edf`, `.bdf` (treated as EDF), `.set` (EEGLAB), `.fif`, `.gdf`
@@ -97,3 +98,11 @@ Batch processing uses Server-Sent Events: `GET /api/batch/progress/{job_id}`.
 
 ### Production / packaging
 The backend (`run.py`) detects PyInstaller via `sys.frozen` and serves the frontend `dist/` as static files. In dev, frontend and backend are separate processes.
+
+### UI patterns
+- **Tooltips**: Use `InfoTooltip` (wraps Radix `<Tooltip.Provider>` + `<Tooltip.Portal>`) for popups inside scrollable containers (Accordion, etc.). Portal rendering avoids clipping from parent `overflow-hidden`.
+- **Keyboard shortcuts**: Registered in page-level `useEffect`. Skip when focus is on INPUT/SELECT/TEXTAREA. Use `e.metaKey || e.ctrlKey` for cross-platform mod keys.
+- **Chart theming**: Import `getChartThemeColors()` from `utils/cssTheme.ts` instead of hardcoding hex colors. It resolves CSS custom properties at runtime.
+
+### ICA / ICLabel
+ICA artifact detection uses `mne-icalabel` with `onnxruntime` as the inference backend (lightweight, no PyTorch needed). If no EOG channels exist in the montage, the service falls back to Fp1/Fp2 as proxy EOG channels. `excluded_ics` must be serialized as native Python `int` (not `numpy.int64`) for Pydantic compatibility.

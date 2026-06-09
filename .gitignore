@@ -67,10 +67,7 @@ yarn-error.log
 *.fif
 
 # 本地设计文档（不上传）
-AGENTS.md
-产品需求文档 (PRD).md
-UI 设计方案.md
-Solarized Light Comprehensive Design System
+samples/
 
 # Tool caches
 .impeccable/
