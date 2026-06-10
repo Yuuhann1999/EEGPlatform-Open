@@ -525,9 +525,10 @@ class EEGService:
         raw = session.raw
         if raw is None:
             return []
-        
+
         events = None
-        
+        id_to_label: dict[int, str] = {}  # 事件ID → 原始描述名
+
         # 方法1: 尝试从 stim 通道获取事件
         stim_picks = mne.pick_types(raw.info, stim=True)
         if len(stim_picks) > 0:
@@ -537,35 +538,40 @@ class EEGService:
                 print(f"从 STIM 通道 {stim_ch_name} 获取到 {len(events)} 个事件")
             except Exception as e:
                 print(f"从 STIM 通道获取事件失败: {e}")
-        
+
         # 方法2: 尝试从 annotations 获取事件
         if events is None or len(events) == 0:
             try:
                 if raw.annotations and len(raw.annotations) > 0:
-                    events, event_id = mne.events_from_annotations(raw)
+                    events, event_id_map = mne.events_from_annotations(raw)
+                    # 反向映射: 数字ID → 原始描述（如 {"stimulus": 1} → {1: "stimulus"}）
+                    id_to_label = {int(v): k for k, v in event_id_map.items()}
                     print(f"从 Annotations 获取到 {len(events)} 个事件")
             except Exception as e:
                 print(f"从 Annotations 获取事件失败: {e}")
-        
+
         if events is None or len(events) == 0:
             print("未检测到任何事件")
             return []
-        
+
         # 统计每个事件ID的出现次数
         unique_ids, counts = np.unique(events[:, 2], return_counts=True)
-        
+
         # 生成颜色
         colors = ['#3fb950', '#58a6ff', '#d29922', '#f85149', '#a855f7', '#8b949e']
-        
+
         event_infos = []
         for i, (event_id, count) in enumerate(zip(unique_ids, counts)):
+            eid = int(event_id)
+            # 优先用原始描述名，没有则留空（前端会显示为事件ID）
+            label = id_to_label.get(eid)
             event_infos.append(EventInfo(
-                id=int(event_id),
+                id=eid,
                 count=int(count),
-                label=None,  # 标签由前端设置
+                label=label,
                 color=colors[i % len(colors)]
             ))
-        
+
         return event_infos
     
     # ============ 波形数据 ============
