@@ -887,10 +887,32 @@ class EEGService:
                 raw.info['bads'].remove(channel_name)
         
         session.add_history("set_bad_channel", {
-            "channel_name": channel_name, 
+            "channel_name": channel_name,
             "is_bad": is_bad
         })
-    
+
+    @staticmethod
+    def drop_channels(session: EEGSession, channel_names: list[str]):
+        """删除指定通道"""
+        raw = session.raw
+        if raw is None:
+            raise ValueError("会话中没有加载的数据")
+
+        # 验证通道名存在
+        missing = [ch for ch in channel_names if ch not in raw.ch_names]
+        if missing:
+            raise ValueError(f"以下通道不存在: {missing}")
+
+        # 不能删掉所有通道
+        if len(channel_names) >= len(raw.ch_names):
+            raise ValueError("不能删除所有通道")
+
+        raw.drop_channels(channel_names)
+
+        session.add_history("drop_channels", {
+            "channel_names": channel_names
+        })
+
     @staticmethod
     def set_montage(session: EEGSession, montage_name: str = "standard_1020") -> dict:
         """设置电极定位，返回匹配信息"""

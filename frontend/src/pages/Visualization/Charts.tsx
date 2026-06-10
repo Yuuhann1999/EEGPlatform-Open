@@ -1080,9 +1080,9 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
 
   const availableEpochEventIds = currentData?.epochEventIds || [];
   const [eventId, setEventId] = useState<number | 'all'>('all');
-  const [fmin, setFmin] = useState(1);
+  const [fmin, setFmin] = useState(4);
   const [fmax, setFmax] = useState(40);
-  const [nCycles, setNCycles] = useState(7);
+  const [nCycles, setNCycles] = useState(4);
   const [baselineStart, setBaselineStart] = useState(-0.2);
   const [baselineEnd, setBaselineEnd] = useState(0);
   const [baselineMode, setBaselineMode] = useState<'logratio' | 'ratio' | 'zscore' | 'percent'>('logratio');
@@ -1113,7 +1113,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
   const epochLen = currentData?.epochTmin != null && currentData?.epochTmax != null
     ? Math.max(0, (currentData.epochTmax as number) - (currentData.epochTmin as number))
     : null;
-  const maxNCycles = epochLen ? Math.max(1, Math.floor(epochLen * Math.max(1, fmin) * 0.9 * 10) / 10) : null;
+  const maxNCycles = epochLen ? Math.max(1, Math.floor(epochLen * Math.max(1, fmin) * Math.PI / 5 * 0.8 * 10) / 10) : null;
   const nCyclesWarning = maxNCycles != null && nCycles > maxNCycles
     ? `当前 epoch 长度约 ${(epochLen as number).toFixed(2)}s；在 fmin=${fmin}Hz 时建议 n_cycles ≤ ${maxNCycles}，否则可能报“wavelet longer than signal”。`
     : null;

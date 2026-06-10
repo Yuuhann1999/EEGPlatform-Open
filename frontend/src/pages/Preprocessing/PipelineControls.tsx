@@ -17,6 +17,7 @@ import {
   Loader2,
   Tag,
   Info,
+  ListX,
 } from 'lucide-react';
 import { Button, Input } from '../../components/ui';
 import { useEEGStore } from '../../stores/eegStore';
@@ -37,7 +38,8 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
     redoPipelineStep,
     addPipelineStep,
     events,
-    updateEventLabel
+    updateEventLabel,
+    currentData,
   } = useEEGStore();
 
   const [cropMin, setCropMin] = useState('0');
@@ -82,6 +84,9 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
 
   // Montage 参数
   const [montageName, setMontageName] = useState('standard_1020');
+
+  // 通道选择参数（记录勾选的要删除的通道）
+  const [dropChannelSelected, setDropChannelSelected] = useState<Set<string>>(new Set());
 
   const canUndo = currentStepIndex >= 0;
   const canRedo = currentStepIndex < pipelineSteps.length - 1;
@@ -228,6 +233,79 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
                 裁剪数据
               </Button>
+            </div>
+          </AccordionItem>
+
+          {/* 通道选择 */}
+          <AccordionItem value="dropChannel" icon={<ListX size={16} />} title="通道选择" helpText="选择并删除不需要的通道（如 EOG、EMG 等）。删除后不可通过此步骤恢复，请使用撤销。">
+            <div className="space-y-3">
+              {currentData && currentData.channels.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-eeg-text-muted">
+                      勾选要删除的通道（已选 {dropChannelSelected.size} 个）
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="text-xs text-eeg-accent hover:underline"
+                        onClick={() => {
+                          if (currentData) {
+                            setDropChannelSelected(new Set(currentData.channels.map(ch => ch.name)));
+                          }
+                        }}
+                      >
+                        全选
+                      </button>
+                      <span className="text-xs text-eeg-text-muted">/</span>
+                      <button
+                        type="button"
+                        className="text-xs text-eeg-accent hover:underline"
+                        onClick={() => setDropChannelSelected(new Set())}
+                      >
+                        清空
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto border border-eeg-border rounded-md p-2 space-y-1">
+                    {currentData.channels.map(ch => (
+                      <label key={ch.name} className="flex items-center gap-2 cursor-pointer py-0.5 hover:bg-eeg-hover rounded px-1">
+                        <input
+                          type="checkbox"
+                          checked={dropChannelSelected.has(ch.name)}
+                          onChange={(e) => {
+                            setDropChannelSelected(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(ch.name);
+                              else next.delete(ch.name);
+                              return next;
+                            });
+                          }}
+                          className="w-3.5 h-3.5 rounded border-eeg-border bg-eeg-bg text-eeg-active focus:ring-eeg-active"
+                        />
+                        <span className="text-sm text-eeg-text flex-1">{ch.name}</span>
+                        <span className="text-xs text-eeg-text-muted">{ch.type}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={isProcessing || dropChannelSelected.size === 0 || dropChannelSelected.size >= (currentData?.channels.length ?? 0)}
+                    onClick={() => {
+                      handleApply('drop_channel', {
+                        channelNames: Array.from(dropChannelSelected),
+                      });
+                      setDropChannelSelected(new Set());
+                    }}
+                  >
+                    {isProcessing ? <Loader2 size={14} className="mr-1 animate-spin" /> : null}
+                    删除选中通道（{dropChannelSelected.size}）
+                  </Button>
+                </>
+              ) : (
+                <p className="text-xs text-eeg-text-muted">请先加载数据文件</p>
+              )}
             </div>
           </AccordionItem>
 

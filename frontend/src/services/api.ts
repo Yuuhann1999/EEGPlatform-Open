@@ -494,6 +494,22 @@ export const preprocessingApi = {
   },
 
   /**
+   * 删除指定通道
+   */
+  async dropChannels(
+    sessionId: string,
+    channelNames: string[]
+  ): Promise<OperationResponse> {
+    return request('/preprocessing/drop-channels', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: sessionId,
+        channel_names: channelNames,
+      }),
+    });
+  },
+
+  /**
    * 设置电极定位
    */
   async setMontage(

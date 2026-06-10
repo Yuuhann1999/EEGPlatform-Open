@@ -289,12 +289,13 @@ class TFRJobManager:
             decim = int(decim) if decim and int(decim) > 0 else 2
 
             # Guard: wavelet length must not exceed signal length.
-            # Approx wavelet duration ~= n_cycles / fmin (seconds). Must be < epoch length.
+            # MNE wavelet extends 5*sigma_t = 5*n_cycles/(2*pi*f) each side,
+            # full duration ≈ 5*n_cycles/(pi*f) seconds.
             epoch_len = float(epochs_sel.tmax - epochs_sel.tmin)
             if epoch_len <= 0:
                 raise ValueError("Epoch 时间窗无效，无法计算 TFR")
-            # Safety factor to avoid edge cases
-            max_cycles = max(1.0, epoch_len * float(np.min(freqs)) * 0.9)
+            # Correct formula with safety factor 0.8
+            max_cycles = max(1.0, epoch_len * float(np.min(freqs)) * np.pi / 5.0 * 0.8)
             if n_cycles > max_cycles:
                 # auto clamp, and also provide a helpful message
                 n_cycles = float(max_cycles)

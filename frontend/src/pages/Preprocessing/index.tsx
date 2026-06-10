@@ -85,8 +85,9 @@ export function PreprocessingPage() {
     setFiles,
     waveformData,
     preProcessingWaveform,
-    setWaveformData, 
+    setWaveformData,
     savePreProcessingWaveform,
+    setPreProcessingWaveform,
     clearPreProcessingWaveform,
     toggleBadChannel,
     currentData,
@@ -338,7 +339,32 @@ export function PreprocessingPage() {
 
     setIsProcessing(true);
     setError(null);
-    savePreProcessingWaveform();
+
+    // 在执行操作前，获取完整文件的波形作为叠加快照（而非仅当前视口）
+    try {
+      const fullDuration = currentData?.duration ?? 300;
+      const overlayResp = await waveformApi.getWaveform(sessionId, 0, fullDuration);
+      const fullWaveform: WaveformData = {
+        timeRange: overlayResp.time_range,
+        sampleRate: overlayResp.sample_rate,
+        channels: overlayResp.channels.map(ch => ({
+          name: ch.name,
+          data: ch.data,
+          isBad: ch.is_bad,
+        })),
+        events: overlayResp.events.map(e => ({
+          time: e.time,
+          id: e.id,
+          label: e.label || undefined,
+        })),
+        isEpoch: overlayResp.is_epoch || false,
+        nEpochs: overlayResp.n_epochs,
+      };
+      setPreProcessingWaveform(fullWaveform);
+    } catch {
+      // 获取完整波形失败时回退到保存当前视口
+      savePreProcessingWaveform();
+    }
 
     try {
       let result;
@@ -420,7 +446,14 @@ export function PreprocessingPage() {
             params.isBad as boolean
           );
           break;
-        
+
+        case 'drop_channel':
+          result = await preprocessingApi.dropChannels(
+            sessionId,
+            params.channelNames as string[]
+          );
+          break;
+
         default:
           throw new Error(`未知操作: ${action}`);
       }
@@ -898,6 +931,10 @@ function getBreadcrumbLabel(step: PipelineStep): string {
       return String(p.montageName);
     case 'bad_channel':
       return p.isBad ? `坏道 ${p.channelName}` : `恢复 ${p.channelName}`;
+    case 'drop_channel': {
+      const names = (p.channelNames as string[]) || [];
+      return names.length <= 3 ? `删 ${names.join(',')}` : `删通道 (${names.length})`;
+    }
     default:
       return getStepTypeLabel(step.type);
   }

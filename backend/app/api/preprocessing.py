@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from ..schemas import (
     FilterRequest, ResampleRequest, RereferenceRequest,
     ICARequest, EpochRequest, CropRequest,
-    BadChannelRequest, SetMontageRequest,
+    BadChannelRequest, DropChannelRequest, SetMontageRequest,
     OperationResponse
 )
 from ..services.eeg_service import eeg_service
@@ -246,6 +246,28 @@ async def set_bad_channel(request: BadChannelRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"设置坏道失败: {str(e)}")
+
+@router.post("/drop-channels", response_model=OperationResponse)
+async def drop_channels(request: DropChannelRequest):
+    """删除指定通道"""
+    session = get_session_or_404(request.session_id)
+    try:
+        session.save_state("drop_channels", {"channel_names": request.channel_names})
+        eeg_service.drop_channels(session, channel_names=request.channel_names)
+        info = eeg_service.get_data_info(session)
+        return OperationResponse(
+            success=True,
+            message=f"已删除 {len(request.channel_names)} 个通道",
+            data={
+                "dropped_channels": request.channel_names,
+                "channel_count": info.channel_count if info else None,
+                "channels": [{"name": ch.name, "type": ch.type, "is_bad": ch.is_bad} for ch in info.channels] if info else [],
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除通道失败: {str(e)}")
 
 @router.post("/montage", response_model=OperationResponse)
 async def set_montage(request: SetMontageRequest):

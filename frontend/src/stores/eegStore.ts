@@ -48,6 +48,7 @@ interface EEGState {
   setCurrentData: (data: EEGDataInfo | null) => void;
   setWaveformData: (data: WaveformData | null) => void;
   savePreProcessingWaveform: () => void;
+  setPreProcessingWaveform: (data: WaveformData | null) => void;
   clearPreProcessingWaveform: () => void;
   setViewTimeRange: (range: [number, number]) => void;
   setEvents: (events: EventTrigger[]) => void;
@@ -109,6 +110,8 @@ export const useEEGStore = create<EEGState>((set) => ({
   savePreProcessingWaveform: () => set((state) => ({
     preProcessingWaveform: state.waveformData ? JSON.parse(JSON.stringify(state.waveformData)) : null
   })),
+
+  setPreProcessingWaveform: (data: WaveformData | null) => set({ preProcessingWaveform: data }),
 
   clearPreProcessingWaveform: () => set({ preProcessingWaveform: null }),
   

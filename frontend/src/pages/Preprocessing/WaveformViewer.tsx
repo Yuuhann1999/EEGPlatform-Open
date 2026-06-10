@@ -262,31 +262,63 @@ export function WaveformViewer({
         ctx.stroke();
       }
 
-      // 叠加处理前的波形
+      // 叠加处理前的波形（时间对齐）
       if (showOverlay && preProcessingData) {
         const preChannel = preProcessingData.channels.find(ch => ch.name === channel.name);
         if (preChannel) {
           ctx.strokeStyle = colors.warning || '#cb4b16';
           ctx.globalAlpha = 0.6;
           ctx.lineWidth = 1;
-          ctx.beginPath();
 
-          const preSamplesPerPixel = Math.max(1, Math.floor(preChannel.data.length / drawWidth));
+          const preTimeRange = preProcessingData.timeRange;
+          const preSR = preProcessingData.sampleRate;
 
-          for (let px = 0; px < drawWidth; px++) {
-            const sampleIndex = Math.floor(px * preSamplesPerPixel);
-            if (sampleIndex >= preChannel.data.length) break;
+          // 计算叠加数据与当前显示窗口的时间交集
+          const overlapStart = Math.max(preTimeRange[0], timeRange[0]);
+          const overlapEnd = Math.min(preTimeRange[1], timeRange[1]);
 
-            const value = preChannel.data[sampleIndex];
-            const pixelOffset = value / uVPerPixel;
-            // 同样不裁剪
-            const screenY = y - pixelOffset;
-            const screenX = leftPadding + px;
+          if (overlapStart < overlapEnd) {
+            ctx.beginPath();
+            // 交集区域对应的像素范围
+            const pxStart = leftPadding + ((overlapStart - timeRange[0]) / viewDuration) * drawWidth;
+            const pxEnd = leftPadding + ((overlapEnd - timeRange[0]) / viewDuration) * drawWidth;
+            const overlayDrawWidth = Math.max(1, Math.floor(pxEnd - pxStart));
 
-            if (px === 0) ctx.moveTo(screenX, screenY);
-            else ctx.lineTo(screenX, screenY);
+            // 叠加数据中对应的 sample 索引范围
+            const sampleStart = Math.max(0, Math.floor((overlapStart - preTimeRange[0]) * preSR));
+            const sampleEnd = Math.min(preChannel.data.length, Math.ceil((overlapEnd - preTimeRange[0]) * preSR));
+            const overlapSamples = sampleEnd - sampleStart;
+
+            if (overlapSamples > 0) {
+              const overlaySamplesPerPixel = Math.max(1, Math.floor(overlapSamples / overlayDrawWidth));
+              let pathStarted = false;
+
+              for (let px = 0; px < overlayDrawWidth; px++) {
+                const sampleIndex = sampleStart + Math.floor(px * overlaySamplesPerPixel);
+                if (sampleIndex >= sampleEnd) break;
+
+                const value = preChannel.data[sampleIndex];
+                // 跳过 epoch 分隔符
+                if (value === -1e10 || (value !== value)) {
+                  if (pathStarted) { ctx.stroke(); pathStarted = false; }
+                  continue;
+                }
+
+                const pixelOffset = value / uVPerPixel;
+                const screenY = y - pixelOffset;
+                const screenX = pxStart + px;
+
+                if (!pathStarted) {
+                  ctx.beginPath();
+                  ctx.moveTo(screenX, screenY);
+                  pathStarted = true;
+                } else {
+                  ctx.lineTo(screenX, screenY);
+                }
+              }
+              if (pathStarted) ctx.stroke();
+            }
           }
-          ctx.stroke();
           ctx.globalAlpha = 1;
         }
       }

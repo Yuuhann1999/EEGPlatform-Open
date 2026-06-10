@@ -149,6 +149,11 @@ class BadChannelRequest(BaseModel):
     channel_name: str
     is_bad: bool
 
+class DropChannelRequest(BaseModel):
+    """删除通道请求"""
+    session_id: str
+    channel_names: list[str]
+
 class SetMontageRequest(BaseModel):
     """设置电极定位请求"""
     session_id: str
@@ -240,9 +245,9 @@ class TFRRequest(BaseModel):
     session_id: str
     channels: list[str]
     event_id: Optional[int] = None
-    fmin: float = 1.0
+    fmin: float = 4.0
     fmax: float = 40.0
-    n_cycles: float = 7.0
+    n_cycles: float = 4.0
     baseline: Optional[tuple[float, float]] = (-0.2, 0.0)  # seconds
     baseline_mode: Literal["logratio", "ratio", "zscore", "percent"] = "logratio"
     decim: int = 2
