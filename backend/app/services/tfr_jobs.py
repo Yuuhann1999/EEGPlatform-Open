@@ -288,17 +288,11 @@ class TFRJobManager:
 
             decim = int(decim) if decim and int(decim) > 0 else 2
 
-            # Guard: wavelet length must not exceed signal length.
-            # MNE wavelet extends 5*sigma_t = 5*n_cycles/(2*pi*f) each side,
-            # full duration ≈ 5*n_cycles/(pi*f) seconds.
+            # 展示型 TFR：周期数随频率增加，高频更平滑，接近离线绘图脚本的效果。
             epoch_len = float(epochs_sel.tmax - epochs_sel.tmin)
             if epoch_len <= 0:
                 raise ValueError("Epoch 时间窗无效，无法计算 TFR")
-            # Correct formula with safety factor 0.8
-            max_cycles = max(1.0, epoch_len * float(np.min(freqs)) * np.pi / 5.0 * 0.8)
-            if n_cycles > max_cycles:
-                # auto clamp, and also provide a helpful message
-                n_cycles = float(max_cycles)
+            n_cycles_by_freq = freqs / 2.0
 
             _update(progress=0.15)
 
@@ -315,70 +309,39 @@ class TFRJobManager:
             tfr_n_jobs = 1 if IS_FROZEN else max(1, int(settings.TFR_N_JOBS))
             print(
                 f"[TFR] 开始计算: epochs={n_epochs}, channels={n_channels}, freqs={n_freqs}, "
-                f"times={n_times//decim}, n_cycles={n_cycles}, render_mode={render_mode}, n_jobs={tfr_n_jobs}"
+                f"times={n_times//decim}, n_cycles=freqs/2, render_mode={render_mode}, n_jobs={tfr_n_jobs}"
             )
 
-            # Compute per-epoch (so baseline can be applied correctly), then average
-            # 为了避免长时间无进度，按 batch 计算并更新进度
             start_compute = time.time()
-            batch_size = 5 if n_epochs >= 10 else n_epochs
-            sum_power_by_channel = None
-            total_epochs = 0
-            times_arr = None
+            tfr_avg = tfr_morlet(
+                epochs_sel,
+                freqs=freqs,
+                n_cycles=n_cycles_by_freq,
+                return_itc=False,
+                average=True,
+                picks=picks,
+                decim=decim,
+                n_jobs=tfr_n_jobs,
+            )
 
-            for start_idx in range(0, n_epochs, batch_size):
-                if job.cancelled:
-                    _update(status="error", progress=1.0, error="任务已被用户取消")
-                    return
+            _update(progress=0.65)
 
-                end_idx = min(start_idx + batch_size, n_epochs)
-                epochs_batch = epochs_sel[start_idx:end_idx]
-
-                tfr_batch = tfr_morlet(
-                    epochs_batch,
-                    freqs=freqs,
-                    n_cycles=n_cycles,
-                    return_itc=False,
-                    average=False,
-                    picks=picks,
-                    decim=decim,
-                    n_jobs=tfr_n_jobs,
-                )
-
-                if baseline is not None:
-                    tfr_batch.apply_baseline(baseline=baseline, mode=baseline_mode)
-
-                # tfr_batch.data: (batch, n_channels, n_freqs, n_times)
-                batch_data = tfr_batch.data
-                batch_sum = batch_data.sum(axis=0)
-
-                if sum_power_by_channel is None:
-                    sum_power_by_channel = batch_sum
-                    times_arr = tfr_batch.times
-                else:
-                    sum_power_by_channel += batch_sum
-
-                total_epochs += (end_idx - start_idx)
-
-                # 进度：0.15 -> 0.75
-                progress = 0.15 + 0.6 * (total_epochs / max(1, n_epochs))
-                _update(progress=progress)
+            if baseline is not None:
+                tfr_avg.apply_baseline(baseline=baseline, mode=baseline_mode)
+                _update(progress=0.75)
 
             compute_time = time.time() - start_compute
             print(f"[TFR] 计算完成，耗时 {compute_time:.2f}秒")
 
             _update(progress=0.8)
 
-            if sum_power_by_channel is None or total_epochs == 0 or times_arr is None:
-                raise ValueError("TFR 计算失败：无有效 epochs")
-
-            power_by_channel = (sum_power_by_channel / float(total_epochs))  # (n_channels, n_freqs, n_times)
+            power_by_channel = tfr_avg.data  # (n_channels, n_freqs, n_times)
             power = power_by_channel.mean(axis=0)  # (n_freqs, n_times) average channels
             channel_names_out = [epochs_sel.ch_names[i] for i in picks]
 
             # 时间和频率
-            times_ms = (times_arr * 1000.0).tolist()
-            freqs_out = freqs.tolist()
+            times_ms = (tfr_avg.times * 1000.0).tolist()
+            freqs_out = tfr_avg.freqs.tolist()
 
             # 根据 render_mode 决定输出
             if render_mode == "image":
@@ -475,4 +438,3 @@ class TFRJobManager:
 
 
 tfr_job_manager = TFRJobManager()
-

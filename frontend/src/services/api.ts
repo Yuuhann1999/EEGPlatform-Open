@@ -628,7 +628,6 @@ export const visualizationApi = {
     eventId?: number;
     fmin: number;
     fmax: number;
-    nCycles: number;
     baseline?: [number, number];
     baselineMode: 'logratio' | 'ratio' | 'zscore' | 'percent';
     decim: number;
@@ -646,7 +645,6 @@ export const visualizationApi = {
         event_id: params.eventId,
         fmin: params.fmin,
         fmax: params.fmax,
-        n_cycles: params.nCycles,
         baseline: params.baseline,
         baseline_mode: params.baselineMode,
         decim: params.decim,

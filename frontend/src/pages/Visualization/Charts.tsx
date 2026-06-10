@@ -1082,7 +1082,6 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
   const [eventId, setEventId] = useState<number | 'all'>('all');
   const [fmin, setFmin] = useState(4);
   const [fmax, setFmax] = useState(40);
-  const [nCycles, setNCycles] = useState(4);
   const [baselineStart, setBaselineStart] = useState(-0.2);
   const [baselineEnd, setBaselineEnd] = useState(0);
   const [baselineMode, setBaselineMode] = useState<'logratio' | 'ratio' | 'zscore' | 'percent'>('logratio');
@@ -1108,15 +1107,6 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
   const channels = tfrMode === 'multi' ? roiChannels.slice(0, MAX_MULTI_CHANNELS) : roiChannels;
 
   const canRun = Boolean(sessionId) && Boolean(currentData?.hasEpochs) && channels.length > 0;
-
-  // 参数提示：根据 epoch 长度推算 n_cycles 上限
-  const epochLen = currentData?.epochTmin != null && currentData?.epochTmax != null
-    ? Math.max(0, (currentData.epochTmax as number) - (currentData.epochTmin as number))
-    : null;
-  const maxNCycles = epochLen ? Math.max(1, Math.floor(epochLen * Math.max(1, fmin) * Math.PI / 5 * 0.8 * 10) / 10) : null;
-  const nCyclesWarning = maxNCycles != null && nCycles > maxNCycles
-    ? `当前 epoch 长度约 ${(epochLen as number).toFixed(2)}s；在 fmin=${fmin}Hz 时建议 n_cycles ≤ ${maxNCycles}，否则可能报“wavelet longer than signal”。`
-    : null;
 
   useEffect(() => {
     if (!jobId) return;
@@ -1157,7 +1147,6 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
         eventId: eventId === 'all' ? undefined : eventId,
         fmin,
         fmax,
-        nCycles,
         baseline: [baselineStart, baselineEnd],
         baselineMode,
         decim,
@@ -1408,10 +1397,10 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
             </div>
           </div>
 
-          {/* n_cycles */}
-          <div>
-            <label className="block text-xs text-eeg-text-muted mb-1">n_cycles</label>
-            <input type="number" value={nCycles} onChange={(e) => setNCycles(parseFloat(e.target.value) || 7)} step="0.5" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
+          {/* cycles */}
+          <div className="rounded border border-eeg-border bg-eeg-bg px-2 py-2">
+            <div className="text-xs text-eeg-text-muted mb-1">n_cycles</div>
+            <div className="text-sm text-eeg-text">自动：freqs / 2</div>
           </div>
 
           {/* 高级设置 */}
@@ -1458,9 +1447,6 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
           )}
 
           {/* 警告信息（统一提示样式） */}
-          {nCyclesWarning && (
-            <Alert variant="warning" title="提示" description={nCyclesWarning} className="text-xs" />
-          )}
           {!currentData?.hasEpochs && (
             <Alert variant="error" title="需要先分段" description="请先完成分段步骤后再继续。" className="text-xs" />
           )}

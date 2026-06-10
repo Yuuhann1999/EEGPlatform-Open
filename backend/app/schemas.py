@@ -247,7 +247,7 @@ class TFRRequest(BaseModel):
     event_id: Optional[int] = None
     fmin: float = 4.0
     fmax: float = 40.0
-    n_cycles: float = 4.0
+    n_cycles: float = Field(0.0, description="兼容旧请求；实际计算固定使用 freqs / 2")
     baseline: Optional[tuple[float, float]] = (-0.2, 0.0)  # seconds
     baseline_mode: Literal["logratio", "ratio", "zscore", "percent"] = "logratio"
     decim: int = 2
@@ -322,5 +322,4 @@ class DataExportRequest(BaseModel):
     format: Literal["fif", "set", "edf"]
     output_path: Optional[str] = None  # 可选，不指定则自动生成
     export_epochs: bool = False  # 是否导出 epochs 而非 raw
-
 
