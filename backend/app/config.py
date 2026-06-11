@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     ENABLE_ICLABEL: bool = True
     ICA_FIT_MAX_SFREQ: float = 250.0
     ICA_FIT_MAX_DURATION_SECONDS: Optional[float] = None
+    ICA_MAX_COMPONENTS: Optional[int] = None  # ICA 成分数上限（None=不限制）
     LOG_REQUESTS: bool = False
 
 settings = Settings()

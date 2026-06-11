@@ -250,7 +250,7 @@ class TFRRequest(BaseModel):
     n_cycles: float = Field(0.0, description="兼容旧请求；实际计算固定使用 freqs / 2")
     baseline: Optional[tuple[float, float]] = (-0.2, 0.0)  # seconds
     baseline_mode: Literal["logratio", "ratio", "zscore", "percent"] = "logratio"
-    decim: int = 2
+    decim: int = 1
     # 新增：渲染模式
     render_mode: Literal["data", "image"] = "data"  # data=Canvas数据, image=MNE图像
     # 新增：MNE 渲染参数

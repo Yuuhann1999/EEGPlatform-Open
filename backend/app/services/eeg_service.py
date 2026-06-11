@@ -966,19 +966,41 @@ class EEGService:
         exclude_labels: list[str] = None,
         threshold: float = 0.9
     ):
-        """应用 ICA 自动去伪迹"""
+        """应用 ICA 自动去伪迹（使用 extended infomax + ICLabel）
+
+        使用 MNE 推荐的 extended infomax 算法拟合 ICA，
+        然后通过 mne-icalabel（ICLabel 模型 + ONNX 推理）自动识别
+        眼电、肌电、心电等伪迹成分并去除。
+
+        依赖: mne-icalabel >= 0.7.0, onnxruntime >= 1.19.0, python-picard >= 0.7
+        """
         raw = session.raw
         if raw is None:
             raise ValueError("会话中没有加载的数据")
-        
-        # 保存状态到撤销栈
+
+        # ---- 0. 检查 ICLabel 是否启用 ----
+        if not settings.ENABLE_ICLABEL:
+            raise RuntimeError(
+                "ICLabel 已在当前部署环境禁用，无法执行 ICA 自动去伪迹。"
+                "请在服务端配置中设置 ENABLE_ICLABEL=true 以启用。"
+            )
+
+        try:
+            from mne_icalabel import label_components
+        except ImportError:
+            raise RuntimeError(
+                "mne-icalabel 未安装，无法执行 ICA 自动去伪迹。"
+                "请在部署环境中安装: pip install mne-icalabel onnxruntime python-picard"
+            )
+
+        # ---- 1. 保存撤销状态 ----
         session.save_state("ica", {
             "n_components": n_components,
             "exclude_labels": exclude_labels,
             "threshold": threshold
         })
-        
-        # 创建 ICA 对象
+
+        # ---- 2. 通道与成分数 ----
         eeg_picks = mne.pick_types(raw.info, eeg=True, exclude='bads')
         if len(eeg_picks) < 2:
             raise ValueError("ICA 至少需要 2 个可用 EEG 通道")
@@ -988,112 +1010,96 @@ class EEGService:
         else:
             n_components = min(n_components, len(eeg_picks) - 1)
 
+        # 部署环境可通过 ICA_MAX_COMPONENTS 强制限制成分数（节省内存）
+        if settings.ICA_MAX_COMPONENTS is not None and settings.ICA_MAX_COMPONENTS > 0:
+            n_components = min(n_components, settings.ICA_MAX_COMPONENTS)
+
+        # ---- 3. 准备拟合数据（仅 EEG 通道的副本） ----
         fit_raw = raw.copy().pick(eeg_picks)
         if settings.ICA_FIT_MAX_DURATION_SECONDS and fit_raw.times[-1] > settings.ICA_FIT_MAX_DURATION_SECONDS:
             fit_raw.crop(tmax=settings.ICA_FIT_MAX_DURATION_SECONDS)
         if settings.ICA_FIT_MAX_SFREQ and fit_raw.info["sfreq"] > settings.ICA_FIT_MAX_SFREQ:
             fit_raw.resample(settings.ICA_FIT_MAX_SFREQ, npad="auto")
+
         print(
-            f"ICA 拟合数据: {len(fit_raw.ch_names)} 通道, "
+            f"[ICA] 拟合数据: {len(fit_raw.ch_names)} 通道, "
             f"{fit_raw.times[-1]:.1f}s, {fit_raw.info['sfreq']}Hz, "
-            f"ICLabel={'启用' if settings.ENABLE_ICLABEL else '禁用'}"
+            f"n_components={n_components}, "
+            f"算法=extended infomax, ICLabel=启用"
         )
-        
-        ica = ICA(n_components=n_components, random_state=42, max_iter="auto")
+
+        # ---- 4. 拟合 ICA（extended infomax，ICLabel 推荐算法） ----
+        ica = ICA(
+            n_components=n_components,
+            method='infomax',
+            fit_params=dict(extended=True),
+            random_state=42,
+            max_iter='auto',
+        )
         ica.fit(fit_raw)
 
-        # 使用 mne-icalabel 自动识别伪迹
-        excluded_ics = []
-        try:
-            if not settings.ENABLE_ICLABEL:
-                raise ImportError("ICLabel 已在当前部署环境禁用")
-
-            from mne_icalabel import label_components
-
-            # ICLabel 需要 montage 信息来生成地形图特征
-            # 如果数据没有 montage，临时设置标准 10-20 用于特征提取
-            label_raw = fit_raw
-            temp_montage = False
-            if fit_raw.get_montage() is None:
-                try:
-                    montage = mne.channels.make_standard_montage('standard_1020')
-                    fit_raw.set_montage(montage, on_missing='ignore', verbose=False)
-                    temp_montage = True
-                    print("ICA: 临时设置 standard_1020 montage 用于 ICLabel 特征提取")
-                except Exception as e:
-                    print(f"ICA: 设置临时 montage 失败: {e}")
-
-            labels = label_components(fit_raw, ica, method='iclabel')
-
-            # mne-icalabel 0.8 返回:
-            #   y_pred_proba: shape (n_components,) — 每个成分的伪迹概率
-            #   labels: list of (n_components,) — 每个成分的标签字符串
-            ic_labels = labels.get('labels', [])
-            ic_proba = labels.get('y_pred_proba', None)
-
-            if ic_proba is None or len(ic_labels) == 0:
-                print("警告: label_components 返回的数据格式不正确")
-                raise ValueError("无法获取标签概率数据")
-
-            ic_proba = np.asarray(ic_proba).flatten()
-
-            # 用户要排除的伪迹类型关键词
-            artifact_keywords = []
-            if exclude_labels:
-                for el in exclude_labels:
-                    artifact_keywords.extend(el.lower().split())
-            # 如果没指定，默认排除眼电和肌电
-            if not artifact_keywords:
-                artifact_keywords = ['eye', 'muscle', 'blink']
-
-            for ic_idx in range(min(len(ic_labels), len(ic_proba))):
-                label = str(ic_labels[ic_idx]).lower()
-                prob = float(ic_proba[ic_idx])
-
-                # 检查标签是否匹配用户要排除的类型
-                matched = any(kw in label for kw in artifact_keywords)
-
-                if matched and prob > threshold:
-                    excluded_ics.append(ic_idx)
-
-            print(f"ICLabel 识别完成: {len(excluded_ics)} 个成分被排除, "
-                  f"标签: {[ic_labels[i] for i in excluded_ics if i < len(ic_labels)]}")
-
-        except ImportError:
-            # 如果没有 mne-icalabel 或当前部署禁用了它，使用 EOG 相关方法
-            print("mne-icalabel 不可用，使用 EOG 检测方法")
+        # ---- 5. ICLabel 自动识别伪迹 ----
+        # ICLabel 需要 montage 生成地形图特征，没有则临时套用标准 10-20
+        if fit_raw.get_montage() is None:
             try:
-                # 没有专用 EOG 通道时，用 Fp1/Fp2 作为 EOG 参考
-                eog_ch_names = None
-                available = [ch.upper() for ch in raw.ch_names]
-                fp_candidates = ['FP1', 'Fp1', 'FP2', 'Fp2']
-                found_fps = [raw.ch_names[available.index(fp)] for fp in fp_candidates if fp in available]
-                if found_fps:
-                    eog_ch_names = found_fps
-                    print(f"ICA EOG 检测: 使用 {eog_ch_names} 作为 EOG 参考通道")
-
-                eog_indices, eog_scores = ica.find_bads_eog(
-                    raw, ch_name=eog_ch_names, threshold=threshold
-                )
-                excluded_ics = list(eog_indices) if eog_indices is not None else []
-                print(f"EOG 检测完成: {len(excluded_ics)} 个成分被排除")
+                montage = mne.channels.make_standard_montage('standard_1020')
+                fit_raw.set_montage(montage, on_missing='ignore', verbose=False)
+                print("[ICA] 临时设置 standard_1020 montage 用于 ICLabel 特征提取")
             except Exception as e:
-                print(f"EOG 检测失败: {e}")
-                excluded_ics = []
-        except Exception as e:
-            print(f"ICA 标签识别失败: {e}")
-            traceback.print_exc()
-            # 如果自动识别失败，返回空列表（不排除任何成分）
-            excluded_ics = []
-        
-        # 应用 ICA
+                raise RuntimeError(
+                    f"无法设置通道位置（montage）用于 ICLabel 特征提取: {e}。"
+                    "请确保数据包含通道位置信息，或通道名符合国际 10-20 标准命名。"
+                )
+
+        labels = label_components(fit_raw, ica, method='iclabel')
+
+        # 解析 ICLabel 返回结果
+        ic_labels = labels.get('labels', [])
+        ic_proba = labels.get('y_pred_proba', None)
+
+        if ic_proba is None or len(ic_labels) == 0:
+            raise RuntimeError(
+                "ICLabel 返回数据格式不正确，无法获取标签概率数据。"
+                f"返回类型: {type(labels).__name__}, "
+                f"keys: {list(labels.keys()) if isinstance(labels, dict) else 'N/A'}"
+            )
+
+        ic_proba = np.asarray(ic_proba).flatten()
+
+        # ---- 6. 匹配用户要排除的伪迹类型 ----
+        artifact_keywords = []
+        if exclude_labels:
+            for el in exclude_labels:
+                artifact_keywords.extend(el.lower().split())
+        if not artifact_keywords:
+            artifact_keywords = ['eye', 'muscle', 'blink']
+
+        excluded_ics = []
+        detection_detail = []
+        for ic_idx in range(min(len(ic_labels), len(ic_proba))):
+            label = str(ic_labels[ic_idx]).lower()
+            prob = float(ic_proba[ic_idx])
+            matched = any(kw in label for kw in artifact_keywords)
+
+            if matched and prob > threshold:
+                excluded_ics.append(ic_idx)
+                detection_detail.append(f"IC{ic_idx:03d}[{ic_labels[ic_idx]}, {prob:.2f}]")
+
+        # ---- 7. 应用 ICA 到原始数据 ----
         ica.exclude = excluded_ics
         ica.apply(raw)
-        
+
+        if excluded_ics:
+            print(f"[ICA] ICLabel 识别完成: 排除 {len(excluded_ics)} 个成分: {', '.join(detection_detail)}")
+        else:
+            print(f"[ICA] ICLabel 识别完成: 未检测到匹配的伪迹成分 "
+                  f"(阈值={threshold}, 关键词={artifact_keywords})")
+
+        # ---- 8. 记录历史 ----
         session.add_history("ica", {
             "n_components": n_components,
             "excluded_ics": [int(i) for i in excluded_ics],
-            "threshold": threshold
+            "threshold": threshold,
         })
 
         return [int(i) for i in excluded_ics]

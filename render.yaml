@@ -14,11 +14,13 @@ services:
       - key: TFR_N_JOBS
         value: "1"
       - key: ENABLE_ICLABEL
-        value: "false"
+        value: "true"
       - key: ICA_FIT_MAX_SFREQ
-        value: "200"
+        value: "80"
       - key: ICA_FIT_MAX_DURATION_SECONDS
-        value: "120"
+        value: "20"
+      - key: ICA_MAX_COMPONENTS
+        value: "8"
       - key: MAX_UNDO_STACK
         value: "0"
       - key: LOG_REQUESTS

@@ -1085,7 +1085,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
   const [baselineStart, setBaselineStart] = useState(-0.2);
   const [baselineEnd, setBaselineEnd] = useState(0);
   const [baselineMode, setBaselineMode] = useState<'logratio' | 'ratio' | 'zscore' | 'percent'>('logratio');
-  const [decim, setDecim] = useState(2);
+  const [decim, setDecim] = useState(1);
 
   // 新增：渲染风格
   const [renderStyle, setRenderStyle] = useState<'canvas' | 'mne'>('mne'); // 默认使用 MNE 风格
@@ -1418,7 +1418,7 @@ export function TFRChart({ onRegisterExport }: { onRegisterExport?: (fn: () => v
               {/* decim */}
               <div>
                 <label className="block text-xs text-eeg-text-muted mb-1">decim</label>
-                <input type="number" value={decim} onChange={(e) => setDecim(parseInt(e.target.value) || 2)} step="1" min="1" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
+                <input type="number" value={decim} onChange={(e) => setDecim(parseInt(e.target.value) || 1)} step="1" min="1" className="w-full bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-sm text-eeg-text" />
               </div>
 
               {/* baseline 范围 */}

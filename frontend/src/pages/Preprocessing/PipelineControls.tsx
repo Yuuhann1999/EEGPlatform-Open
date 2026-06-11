@@ -465,7 +465,7 @@ export function PipelineControls({ onAction, onUndo, onRedo, isProcessing = fals
                 运行 ICA
               </Button>
               <p className="text-xs text-eeg-text-muted">
-                公网环境使用轻量 ICA；完整 ICLabel 建议在本地或更高内存后端运行。
+                使用 extended infomax + ICLabel 自动识别并去除伪迹成分。
               </p>
             </div>
           </AccordionItem>

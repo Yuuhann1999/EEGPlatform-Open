@@ -286,7 +286,7 @@ class TFRJobManager:
             if freqs.size < 2:
                 freqs = np.linspace(fmin, fmax, num=8, dtype=float)
 
-            decim = int(decim) if decim and int(decim) > 0 else 2
+            decim = int(decim) if decim and int(decim) > 0 else 1
 
             # 展示型 TFR：周期数随频率增加，高频更平滑，接近离线绘图脚本的效果。
             epoch_len = float(epochs_sel.tmax - epochs_sel.tmin)
