@@ -24,6 +24,8 @@ pydantic>=2.10.0
 pydantic-settings>=2.6.0
 python-dotenv>=1.0.0
 cryptography>=44.0.0
+# CA 证书包（eMudhra/emSign 中间 CA 事件，须 >=2026.10.19）
+certifi>=2026.10.19
 
 # 开发
 pytest>=8.3.0
